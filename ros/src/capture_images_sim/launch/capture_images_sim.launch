@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
     <node pkg="capture_images_sim" type="capture_images_sim.py" name="capture_images_sim" output="screen" cwd="node">
-        param name="save_dir" value="$(find styx)../../../data/traffic_light_sim_captured/" />
+        <param name="save_dir" value="$(find capture_images_sim)../../../data/traffic_light_sim_captured/" />
     </node>
 </launch>
