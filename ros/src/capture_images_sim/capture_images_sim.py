@@ -11,6 +11,7 @@ import tf
 import cv2
 import math
 import yaml
+import time
 
 PI = math.pi
 
@@ -29,6 +30,7 @@ class ImageCapture(object):
         self.closest_next_tl = None   # The index in the traffic light config list
         self.state_closest_tl = None
         self.path_dir = None
+        self.save_count = 0
 
         sub_current_pose = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         sub_image = rospy.Subscriber('/image_color', Image, self.image_cb)
@@ -65,24 +67,28 @@ class ImageCapture(object):
 
     def image_cb(self, msg):
         cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")
-        #if self.state_closest_tl is not None:
-        #    print "saving image", self.state_closest_tl
+        if self.state_closest_tl is not None:
+            path = self.path_dir + str(self.save_count) + "_" + str(self.state_closest_tl) + ".png"
+            cv2.imwrite(path, cv_image)
+            self.save_count += 1
+        time.sleep(0.2)
 
     def tl_cb(self, msg):
         if self.closest_next_tl is not None:
-            for tf in msg.lights:
-                tf_x = tf.pose.pose.position.x
-                tf_y = tf.pose.pose.position.y
+            for tl in msg.lights:
+                tl_x = tl.pose.pose.position.x
+                tl_y = tl.pose.pose.position.y
                 i = self.closest_next_tl
-                distance = ImageCapture.eval_distance(tf_x, self.traffic_lights[i][0], tf_y, self.traffic_lights[i][1])
+                distance = ImageCapture.eval_distance(tl_x, self.traffic_lights[i][0], tl_y, self.traffic_lights[i][1])
+                #print (tl_x, tl_y) , self.position, (self.traffic_lights[i][0], self.traffic_lights[i][1])
             #TODO Set 10 to a parameter to change
-                if distance < 10:
-                    self.state_closest_tl = tf.state
+                if distance < 50:
+                    self.state_closest_tl = tl.state
                     break
         else:
             self.state_closest_tl = None
 
-        print self.state_closest_tl
+        #print self.closest_next_tl, self.state_closest_tl
 
     @staticmethod
     def eval_distance(x1, x2, y1, y2):
