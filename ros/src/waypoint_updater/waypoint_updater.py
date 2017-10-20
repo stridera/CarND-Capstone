@@ -92,7 +92,6 @@ class WaypointUpdater(object):
 
     def pose_cb(self, msg):
         self.current_pose = msg
-        #print(msg.pose.position.y)
 
     def waypoints_cb(self, waypoints):
         self.current_waypoints = waypoints.waypoints
