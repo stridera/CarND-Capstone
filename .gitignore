@@ -2,5 +2,10 @@
 
 build
 devel
+.idea
+.ipynb*
+
 
 profile.tmp
+
+data/traffic-light-models
