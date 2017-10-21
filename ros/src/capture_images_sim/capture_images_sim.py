@@ -33,8 +33,8 @@ class ImageCapture(object):
         self.save_count = 0
 
         sub_current_pose = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        sub_image = rospy.Subscriber('/image_color', Image, self.image_cb)
-        suc_tl = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.tl_cb)
+        sub_image = rospy.Subscriber('/image_color_throttled', Image, self.image_cb)
+        suc_tl = rospy.Subscriber('/vehicle/traffic_lights_throttled', TrafficLightArray, self.tl_cb)
 
         self.path_dir = rospy.get_param('~save_dir')
 
@@ -68,10 +68,10 @@ class ImageCapture(object):
     def image_cb(self, msg):
         cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")
         if self.state_closest_tl is not None:
-            path = self.path_dir + str(self.save_count) + "_" + str(self.state_closest_tl) + ".png"
+            path = self.path_dir + str(self.save_count).zfill(10) + "_" + str(self.state_closest_tl) + ".png"
             cv2.imwrite(path, cv_image)
             self.save_count += 1
-        time.sleep(0.2)
+
 
     def tl_cb(self, msg):
         if self.closest_next_tl is not None:
