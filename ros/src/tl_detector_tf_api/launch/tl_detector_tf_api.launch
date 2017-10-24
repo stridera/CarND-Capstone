@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<launch>
+    <node pkg="tl_detector_tf_api" type="tl_detector_tf_api.py" name="tl_detector_tf_api" output="screen" cwd="node">
+        <param name="save_dir" value="$(find tl_detector_tf_api)../../../data/tl_detector_saved_images/" />
+        <param name="model_file"
+               value="$(find tl_detector_tf_api)../../../data/traffic-light-models/
+               ssd_mobilenet_v1_coco_11_06_2017/frozen_inference_graph.pb" />
+    </node>
+</launch>
