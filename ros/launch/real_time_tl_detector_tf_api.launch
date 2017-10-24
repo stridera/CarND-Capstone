@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Simulator Bridge -->
+    <include file="$(find styx)/launch/server.launch" />
+
+    <!--Traffic Light Detector Node -->
+    <include file="$(find capture_images_sim)/launch/capture_images_sim.launch"/>
+
+    <!--Traffic Light Locations and Camera Config -->
+    <param name="traffic_light_config" textfile="$(find tl_detector)/sim_traffic_light_config.yaml" />
+
+    <!--Throttle node for image publisher -->
+    <node name="image_color_throttler" type="throttle" pkg="topic_tools" args="messages /image_color 1
+    /image_color_throttled" />
+
+</launch>
