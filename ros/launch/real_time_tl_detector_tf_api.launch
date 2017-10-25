@@ -4,7 +4,7 @@
     <include file="$(find styx)/launch/server.launch" />
 
     <!--Traffic Light Detector Node -->
-    <include file="$(find capture_images_sim)/launch/capture_images_sim.launch"/>
+    <include file="$(find tl_detector_tf_api)/launch/tl_detector_tf_api.launch"/>
 
     <!--Traffic Light Locations and Camera Config -->
     <param name="traffic_light_config" textfile="$(find tl_detector)/sim_traffic_light_config.yaml" />
