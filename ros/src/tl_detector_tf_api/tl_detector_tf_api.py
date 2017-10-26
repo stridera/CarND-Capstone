@@ -16,6 +16,7 @@ import PIL.ImageDraw as ImageDraw
 import PIL.ImageFont as ImageFont
 import PIL.Image as PILImage
 
+import time
 
 class TLDetector(object):
     """
@@ -29,19 +30,20 @@ class TLDetector(object):
         self.path_dir = None          # Directory where to save the images, setup in the parameter server
         self.save_count = 0           # A counter for images used to generate appropriate name
 
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/image_color_throttled', Image, self.image_cb)
-
         self.path_dir = rospy.get_param('~save_dir')
         self.model_file = rospy.get_param('~model_file')
 
         self.detection_graph = tensorflow.Graph()
         self._import_tf_graph()
 
+        self.sess = tensorflow.Session(graph=self.detection_graph)
 
         config_string = rospy.get_param("/traffic_light_config")
         config = yaml.load(config_string)
         self.traffic_lights = np.array(config["stop_line_positions"])
+
+        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        rospy.Subscriber('/image_color_throttled', Image, self.image_cb)
 
         rospy.spin()
 
@@ -59,28 +61,40 @@ class TLDetector(object):
         self.yaw = tf.transformations.euler_from_quaternion(quaternion)[2]
 
     def image_cb(self, msg):
-        cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")
+        cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")[...,::-1]
         image = PILImage.fromarray(np.uint8(cv_image))
         #TODO Some kind of preprocessing
-        with self.detection_graph.as_default():
-            with tensorflow.Session(graph=self.detection_graph) as sess:
-                image_np = np.expand_dims(image, axis=0)
-                image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
-                boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
-                scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
-                classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
-                num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
-                (boxes, scores, classes, num_detections) = sess.run([boxes, scores, classes, num_detections],
-                                                                    feed_dict={image_tensor: image_np})
 
-                for i in range(boxes.shape[1]):
-                    if scores[0, i] > 0.5 and classes[0,i] == 10:
-                        TLDetector.draw_bounding_box_on_image(image, boxes[0, i, 0], boxes[0, i, 1], boxes[0, i, 2],
-                                                              boxes[0, i, 3], color='red', thickness=4,
-                                                              display_str_list=(), use_normalized_coordinates=True)
-                filename = self.path_dir + str(self.save_count).zfill(5) + ".png"
-                self.save_count += 1
-                image.save(filename)
+        image_np = np.expand_dims(image, axis=0)
+        image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
+        boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
+        scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
+        classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
+        num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+
+        time_detection_start = time.time()
+
+        (boxes, scores, classes, num_detections) = self.sess.run([boxes, scores, classes, num_detections],
+                                                            feed_dict={image_tensor: image_np})
+
+        time_detection_end = time.time()
+
+        print('Detection inference: {:0.3f} ms'.format((time_detection_end - time_detection_start)   * 1000.0))
+
+        traffic_light_detections = 0
+        for i in range(boxes.shape[1]):
+            if scores[0, i] > 0.5 and classes[0,i] == 10:
+                TLDetector.draw_bounding_box_on_image(image, boxes[0, i, 0], boxes[0, i, 1], boxes[0, i, 2],
+                                                      boxes[0, i, 3], color='red', thickness=4,
+                                                      display_str_list=(), use_normalized_coordinates=True)
+                traffic_light_detections += 1
+        filename = self.path_dir + str(self.save_count).zfill(5) + ".png"
+        self.save_count += 1
+        image.save(filename)
+
+        if traffic_light_detections > 0:
+            print('Detected {:d} traffic light{}'.format(traffic_light_detections, 's' if traffic_light_detections > 1 else ''))
+
 
     def _import_tf_graph(self):
         with self.detection_graph.as_default():
