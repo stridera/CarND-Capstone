@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import rospy
+import os
 
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from styx_msgs.msg import TrafficLightArray, TrafficLight
@@ -36,7 +37,6 @@ class ImageCapture(object):
         self.state_closest_tl = -1    # State of the closest traffic light. -1 if not detected or too far away
         self.path_dir = None          # Directory where to save the images, setup in the parameter server
         self.save_count = 0           # A counter for images used to generate appropriate name
-        #TODO Use the time stamp to generate the image name
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/current_velocity', TwistStamped, self.speed_cb)
@@ -44,6 +44,8 @@ class ImageCapture(object):
         rospy.Subscriber('/vehicle/traffic_lights_throttled', TrafficLightArray, self.tl_cb)
 
         self.path_dir = rospy.get_param('~save_dir')
+        self._dir_management()
+
         config_string = rospy.get_param("/traffic_light_config")
         config = yaml.load(config_string)
         self.traffic_lights = np.array(config["stop_line_positions"])
@@ -150,6 +152,12 @@ class ImageCapture(object):
         """
         return math.sqrt((x1-x2)**2 + (y1-y2)**2)
 
+    def _dir_management(self):
+        """
+        Checks if the saving directory exists, otherwise it creates it.
+        """
+        if not os.path.isdir(self.path_dir):
+            os.makedirs(self.path_dir)
 
 if __name__ == '__main__':
     try:
