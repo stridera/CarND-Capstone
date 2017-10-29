@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+    <node pkg="capture_images_rosbag" type="capture_images_rosbag.py" name="capture_images_rosbag" output="screen" cwd="node">
+        <param name="save_dir" value="$(find capture_images_rosbag)../../../data/images_rosbag_captured/" />
+    </node>
+</launch>
