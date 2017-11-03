@@ -11,10 +11,18 @@ import tensorflow
 import cv2
 import math
 import yaml
+import os
 
 import PIL.ImageDraw as ImageDraw
 import PIL.ImageFont as ImageFont
 import PIL.Image as PILImage
+
+import keras
+from keras.models import Sequential
+from keras.layers.core import Flatten, Dense, Dropout
+from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
+from keras.optimizers import SGD
+from keras.models import model_from_json
 
 import time
 
@@ -37,6 +45,10 @@ class TLDetector(object):
         self._import_tf_graph()
 
         self.sess = tensorflow.Session(graph=self.detection_graph)
+
+        self.class_model_path = rospy.get_param('~class_model_path')
+        self.classification_model = None
+        self._import_keras_model()
 
         config_string = rospy.get_param("/traffic_light_config")
         config = yaml.load(config_string)
@@ -82,18 +94,47 @@ class TLDetector(object):
         print('Detection inference: {:0.3f} ms'.format((time_detection_end - time_detection_start)   * 1000.0))
 
         traffic_light_detections = 0
+
+        cropped = []
         for i in range(boxes.shape[1]):
             if scores[0, i] > 0.5 and classes[0,i] == 10:
                 TLDetector.draw_bounding_box_on_image(image, boxes[0, i, 0], boxes[0, i, 1], boxes[0, i, 2],
                                                       boxes[0, i, 3], color='red', thickness=4,
                                                       display_str_list=(), use_normalized_coordinates=True)
                 traffic_light_detections += 1
+                cropped.append(self._prepare_for_class(image_np, boxes[:,i,:]))
+        cropped = np.array(cropped)
+
+        predictions = self.classification_model.predict(cropped)
+        print (predictions)
+
+
         filename = self.path_dir + str(self.save_count).zfill(5) + ".png"
         self.save_count += 1
-        image.save(filename)
+        #image.save(filename)
+        #cv2.imwrite(filename, cropped[0])
 
         if traffic_light_detections > 0:
             print('Detected {:d} traffic light{}'.format(traffic_light_detections, 's' if traffic_light_detections > 1 else ''))
+
+
+    def _prepare_for_class(self, image, boxes):
+        shape = image.shape
+        (left, right, top, bottom) = (boxes[0, 1] * shape[2], boxes[0, 3] * shape[2],
+                                      boxes[0, 0] * shape[1], boxes[0, 2] * shape[1])
+        crop_height = int(bottom - top)
+        crop_width = int(right - left)
+        #TODO Consider more complicated cases
+        #if crop_height > crop_width:
+        center = (int(left)+ int(right)) // 2
+        cropped = image[0, int(top) : int(bottom), center - (crop_height // 2): center + (crop_height//2), :]
+        resized = cv2.resize(cropped, (50, 50), interpolation = cv2.INTER_CUBIC)
+        return resized
+
+
+
+    #    shape = image.shape
+    #    if shape[1] > shape[2]
 
 
     def _import_tf_graph(self):
@@ -103,6 +144,37 @@ class TLDetector(object):
                 serialized_graph = fid.read()
                 od_graph_def.ParseFromString(serialized_graph)
                 tensorflow.import_graph_def(od_graph_def, name='')
+
+    def _import_keras_model(self):
+
+        #input_shape = (50, 50, 3)
+        #num_classes = 3
+
+        #self.classification_model.add(Convolution2D(32, kernel_size=(2, 2), padding='same',
+        #                                            activation='relu', input_shape=input_shape))
+        #self.classification_model.add(MaxPooling2D(pool_size=(2, 2)))
+        #self.classification_model.add(Convolution2D(64, (2, 2), activation='relu', padding='same'))
+        #self.classification_model.add(MaxPooling2D(pool_size=(2, 2)))
+        #self.classification_model.add(Dropout(0.25))
+        #self.classification_model.add(Flatten())
+        #self.classification_model.add(Dense(128, activation='relu'))
+        #self.classification_model.add(Dropout(0.5))
+        #self.classification_model.add(Dense(num_classes, activation='softmax'))
+
+        json_file = open(os.path.join(self.class_model_path, 'model.json'), 'r')
+        loaded_model_json = json_file.read()
+        json_file.close()
+
+        self.classification_model = model_from_json(loaded_model_json)
+        self.classification_model.load_weights(os.path.join(self.class_model_path, 'model.h5'))
+
+        self.classification_model.compile(loss=keras.losses.categorical_crossentropy, optimizer=keras.optimizers.Adadelta(),
+                             metrics=['accuracy'])
+
+
+
+
+
 
     #TODO restyle method to minimal requirements (taken from tensorflow)
     @staticmethod
