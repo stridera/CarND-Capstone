@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
 import rospy
+import math
 from std_msgs.msg import Bool
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
-from geometry_msgs.msg import TwistStamped
-import math
-
+from geometry_msgs.msg import TwistStamped, Pose, PoseStamped
 from twist_controller import Controller
+from styx_msgs.msg import Waypoint, Lane
+
+
 
 '''
 You can build this node only after you have built (or partially built) the `waypoint_updater` node.
@@ -53,10 +55,33 @@ class DBWNode(object):
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
 
-        # TODO: Create `TwistController` object
-        # self.controller = TwistController(<Arguments you wish to provide>)
+        self.current_pose = None
+        self.current_velocity = None
+        self.dbw_enabled = False
+        self.final_waypoints = None
+        self.current_setpoint = None
 
-        # TODO: Subscribe to all the topics you need to
+        params = {
+            'vehicle_mass': vehicle_mass,
+            'fuel_capacity': fuel_capacity,
+            'brake_deadband': brake_deadband,
+            'decel_limit': decel_limit,
+            'accel_limit': accel_limit,
+            'wheel_radius': wheel_radius,
+            'wheel_base': wheel_base,
+            'steer_ratio': steer_ratio,
+            'max_lat_accel': max_lat_accel,
+            'max_steer_angle': max_steer_angle
+        }
+
+        self.controller = Controller(**params)
+
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb, queue_size=1)
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb, queue_size=1)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb, queue_size=1)
+        rospy.Subscriber('/current_pose', PoseStamped, self.current_pose_cb)
+        rospy.Subscriber('/final_waypoints', Lane, self.final_waypoints_cb)
+
 
         self.loop()
 
@@ -72,7 +97,40 @@ class DBWNode(object):
             #                                                     <any other argument you need>)
             # if <dbw is enabled>:
             #   self.publish(throttle, brake, steer)
+            if(self.dbw_enabled) and \
+              (self.current_pose is not None) and \
+              (self.current_setpoint is not None) and \
+              (self.current_velocity is not None):
+                params = {
+                    'linear_setpoint': self.current_setpoint.twist.linear.x,
+                    'angular_setpoint': self.current_setpoint.twist.angular.z,
+                    'linear_current': self.current_velocity.twist.linear.x
+                }
+
+                throttle, brake, steering = self.controller.control(**params)
+
+                self.publish(throttle, brake, steering)
             rate.sleep()
+    def current_pose_cb(self, msg):
+      self.current_pose = msg
+      pass
+
+    def final_waypoints_cb(self, msg):
+      self.final_waypoints = msg
+      pass
+
+    def current_velocity_cb(self, msg):
+      self.current_velocity = msg
+      pass
+
+    def twist_cmd_cb(self, msg):
+      self.current_setpoint = msg
+      pass
+
+    def dbw_enabled_cb(self, msg):
+      self.dbw_enabled = msg.data
+      pass
+
 
     def publish(self, throttle, brake, steer):
         tcmd = ThrottleCmd()
