@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
+import numpy as np
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 
@@ -28,25 +29,72 @@ class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
+        self.current_waypoints = None
+        self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
-
+        self.update()
         rospy.spin()
 
+    # publish next N waypoints to /final_waypoints interval rate
+    def update(self):
+        interval = rospy.Rate(1)
+
+        while not rospy.is_shutdown():
+          if(self.current_waypoints and self.current_pose):
+            nearest_waypoint = self.find_nearest_waypoint()
+            self.publish_next_waypoints(nearest_waypoint)
+
+          interval.sleep()
+
+    # calculate the euclidian distance between our car and a waypoint
+    def calculate_distance(self, car_pos, wpt_pos):
+        a = np.array((car_pos.x, car_pos.y, car_pos.z))
+        b = np.array((wpt_pos.x, wpt_pos.y, wpt_pos.z))
+
+        distance = np.linalg.norm(a-b)
+
+        return distance
+
+    # find index of nearest waypoint in self.current_waypoints
+    def find_nearest_waypoint(self):
+        waypoints = self.current_waypoints
+        nearest_waypoint = [0, 100000] # index, ceiling for min distance
+        car_pos = self.current_pose.pose.position
+
+        # loop through waypoints and find min distance
+        for i in range(len(waypoints)):
+            distance = self.calculate_distance(car_pos, waypoints[i].pose.pose.position)
+            if(distance < nearest_waypoint[1]):
+              nearest_waypoint = [i, distance]
+
+        return nearest_waypoint[0]
+
+    # publish a list of next n waypoints to /final_waypoints
+    def publish_next_waypoints(self, start_index):
+        waypoints = Lane()
+
+        waypoints.header.stamp = rospy.Time(0)
+        waypoints.header.frame_id = self.current_pose.header.frame_id
+
+        waypoints.waypoints = self.current_waypoints[start_index:start_index + 200]
+
+        self.final_waypoints_pub.publish(waypoints)
+
     def pose_cb(self, msg):
-        # TODO: Implement
-        pass
+        self.current_pose = msg
 
     def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        pass
+        self.current_waypoints = waypoints.waypoints
+
+        # we only need the message once, unsubscribe as soon as we got the message
+        self.base_waypoints_sub.unregister()
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
