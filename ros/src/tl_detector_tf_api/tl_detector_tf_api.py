@@ -105,8 +105,9 @@ class TLDetector(object):
                 cropped.append(self._prepare_for_class(image_np, boxes[:,i,:]))
         cropped = np.array(cropped)
 
-        predictions = self.classification_model.predict(cropped)
-        print (predictions)
+        with self.classification_graph.as_default():
+            predictions = self.classification_model.predict(cropped)
+            print (predictions)
 
 
         filename = self.path_dir + str(self.save_count).zfill(5) + ".png"
@@ -168,10 +169,11 @@ class TLDetector(object):
         self.classification_model = model_from_json(loaded_model_json)
         self.classification_model.load_weights(os.path.join(self.class_model_path, 'model.h5'))
 
-        self.classification_model.compile(loss=keras.losses.categorical_crossentropy, optimizer=keras.optimizers.Adadelta(),
-                             metrics=['accuracy'])
+        #self.classification_model.compile(loss=keras.losses.categorical_crossentropy, optimizer=keras.optimizers.Adadelta(),
+        #                     metrics=['accuracy'])
 
-
+        self.classification_model._make_predict_function()  # see https://github.com/fchollet/keras/issues/6124
+        self.classification_graph = tensorflow.get_default_graph()
 
 
 
