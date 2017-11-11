@@ -24,8 +24,8 @@ class Controller(object):
 
         params = [wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle]
         self.yaw_controller = YawController(*params)
-        self.lowpass = LowPassFilter(0.1, 0.5)
-        self.pid = PID(kp=0.5, ki=0.005, kd=0.5, mn=self.decel_limit, mx=self.accel_limit)
+        self.lowpass = LowPassFilter(0.2, 0.1)
+        self.pid = PID(kp=0.9, ki=0.0005, kd=0.06, mn=self.decel_limit, mx=self.accel_limit)
         self.last_time = rospy.get_time()
         # https://www.researchgate.net/post/How_can_we_calculate_the_required_torque_to_move_a_massive_object_by_means_of_gear_assembly2
         self.brake_torque = (vehicle_mass + fuel_capacity * GAS_DENSITY) * wheel_radius
