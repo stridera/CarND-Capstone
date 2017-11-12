@@ -29,6 +29,7 @@ MAX_DIST = 150.0
 MIN_DIST = 0.0
 MAX_ANGLE = 15.0*PI/180.0  #radians
 
+
 class TLDetector(object):
     """
     """
@@ -43,17 +44,11 @@ class TLDetector(object):
         self.closest_next_tl = -1     # Id of the closest traffic light. None if not detected
         self.stop_waypoint = None
 
-        self.path_dir = rospy.get_param('~save_dir')
-        self.model_file = rospy.get_param('~model_file')
+        self.model_file = rospy.get_param('~detection_model')
+        self.Detector = Detector(self.model_file)
 
-        self.detection_graph = tf.Graph()
-        self._import_tf_graph()
-
-        self.sess = tf.Session(graph=self.detection_graph)
-
-        self.class_model_path = rospy.get_param('~class_model_path')
-        self.classification_model = None
-        self._import_keras_model()
+        self.class_model_path = rospy.get_param('~classification_model_path')
+        self.Classifier = Classifier(self.class_model_path)
 
         config_string = rospy.get_param("/traffic_light_config")
         config = yaml.load(config_string)
@@ -88,13 +83,52 @@ class TLDetector(object):
         self.yaw = ros_tf.transformations.euler_from_quaternion(quaternion)[2]
         self.closest_next_tl = self._eval_next_closest_tl()
 
+    def image_cb(self, msg):
+
+        if self._eval_next_closest_tl() == -1:
+            print "Image not processed, next traffic light too far away..."
+            self.tl_publisher.publish(Int32(-1))
+            return
+
+        cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")[...,::-1]
+        image = PILImage.fromarray(np.uint8(cv_image))
+        image_np = np.expand_dims(image, axis=0)
+
+        time_detection_start = time.time()
+        (boxes, scores, classes, num_detections) = self.Detector.detect(image_np)
+        time_detection_end = time.time()
+        print('Detection inference: {:0.3f} ms'.format((time_detection_end - time_detection_start) * 1000.0))
+
+        tl_detections = [i for i in range(boxes.shape[1]) if (scores[0, i] > 0.8 and classes[0,i] == 10)]
+        if len(tl_detections) == 0:
+            print ("No traffic light detected")
+            return None
+        else:
+            print ("Detected possible {} traffic lights".format(len(tl_detections)))
+
+        cropped = np.array([self._prepare_for_class(image_np, boxes[:, i, :]) for i in tl_detections if i is not None])
+
+        if len(cropped) == 0:
+            print ("Detected no traffic lights...")
+            self.tl_publisher.publish(Int32(-1))
+            return
+
+        classification = self.Classifier.classify(cropped)
+        print ("Next traffic light state: {}".format(classification))
+
+        if classification == 0:
+            self._eval_stop_waypoint_index()
+            self.tl_publisher.publish(Int32(self.stop_waypoint))
+        else:
+            self.tl_publisher.publish(Int32(-1))
+
     def _eval_stop_waypoint_index(self):
         if self.closest_next_tl >= 0:
             id_tl = self.closest_next_tl
             for k, wp in enumerate(self.base_waypoints):
                 distance = TLDetector.eval_distance(self.traffic_lights[id_tl][0], wp[0],
                                                     self.traffic_lights[id_tl][1], wp[1])
-
+                #TODO Choose the min_distance better
                 if distance < 0.5:
                     self.stop_waypoint = k
                     break
@@ -128,76 +162,6 @@ class TLDetector(object):
         """
         return math.sqrt((x1-x2)**2 + (y1-y2)**2)
 
-    def image_cb(self, msg):
-
-        #TODO Condition on the image detection if the distance is not appropriate
-        cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")[...,::-1]
-        image = PILImage.fromarray(np.uint8(cv_image))
-        image_np = np.expand_dims(image, axis=0)
-
-        time_detection_start = time.time()
-        (boxes, scores, classes, num_detections) = self._detect(image_np)
-        time_detection_end = time.time()
-        print('Detection inference: {:0.3f} ms'.format((time_detection_end - time_detection_start) * 1000.0))
-
-        traffic_light_detections = [i for i in range(boxes.shape[1]) if (scores[0, i] > 0.8 and classes[0,i] == 10)]
-        if len(traffic_light_detections) == 0:
-            print ("No traffic light detected")
-            return None
-        else:
-            print ("Detected possible {} traffic lights".format(len(traffic_light_detections)))
-
-        cropped = []
-        for i in traffic_light_detections:
-            TLDetector.draw_bounding_box_on_image(image, boxes[0, i, 0], boxes[0, i, 1], boxes[0, i, 2],
-                                                  boxes[0, i, 3], color='red', thickness=4,
-                                                  display_str_list=(), use_normalized_coordinates=True)
-            im_cropped = self._prepare_for_class(image_np, boxes[:, i, :])
-
-            if im_cropped is not None:
-                cropped.append(im_cropped)
-
-        if len(cropped) == 0:
-            print ("No tentative traffic lights cropped properly...")
-            return None
-        cropped = np.array(cropped)
-        classification = self._classify(cropped)
-        print ("Next traffic light state: {}".format(classification))
-
-        if classification == 0:
-            self._eval_stop_waypoint_index()
-            self.tl_publisher.publish(Int32(self.stop_waypoint))
-        else:
-            self.tl_publisher.publish(Int32(-1))
-
-
-    def _detect(self, image_np):
-        image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
-        boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
-        scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
-        classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
-        num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
-        return self.sess.run([boxes, scores, classes, num_detections], feed_dict={image_tensor: image_np})
-
-    def _classify(self, cropped):
-
-        with self.classification_graph.as_default():
-            predictions = self.classification_model.predict(cropped)
-
-        results = []
-        for i,p in enumerate(predictions):
-            if np.max(p) > 0.9:
-                result = np.argmax(p)
-                results.append(result)
-        if len(results) == 0:
-            return None
-        else:
-            counts = np.bincount(results)
-            if len(counts[counts == np.max(counts)]) == 1:
-                return np.argmax(counts)
-            else:
-                return None
-
     @staticmethod
     def _prepare_for_class(image, boxes):
         shape = image.shape
@@ -221,6 +185,17 @@ class TLDetector(object):
         else:
             return None
 
+
+
+
+class Detector(object):
+    def __init__(self, model_file):
+
+        self.model_file = model_file
+        self.detection_graph = tf.Graph()
+        self._import_tf_graph()
+        self.sess = tf.Session(graph=self.detection_graph)
+
     def _import_tf_graph(self):
         with self.detection_graph.as_default():
             od_graph_def = tf.GraphDef()
@@ -229,61 +204,47 @@ class TLDetector(object):
                 od_graph_def.ParseFromString(serialized_graph)
                 tf.import_graph_def(od_graph_def, name='')
 
-    def _import_keras_model(self):
+    def detect(self, image_np):
+        image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
+        boxes = self.detection_graph.get_tensor_by_name('detection_boxes:0')
+        scores = self.detection_graph.get_tensor_by_name('detection_scores:0')
+        classes = self.detection_graph.get_tensor_by_name('detection_classes:0')
+        num_detections = self.detection_graph.get_tensor_by_name('num_detections:0')
+        return self.sess.run([boxes, scores, classes, num_detections], feed_dict={image_tensor: image_np})
 
-        json_file = open(os.path.join(self.class_model_path, 'model.json'), 'r')
+class Classifier(object):
+    def __init__(self, model_path):
+        json_file = open(os.path.join(model_path, 'model.json'), 'r')
         loaded_model_json = json_file.read()
         json_file.close()
 
         self.classification_model = model_from_json(loaded_model_json)
-        self.classification_model.load_weights(os.path.join(self.class_model_path, 'model.h5'))
+        self.classification_model.load_weights(os.path.join(model_path, 'model.h5'))
 
         self.classification_model._make_predict_function()  # see https://github.com/fchollet/keras/issues/6124
         self.classification_graph = tf.get_default_graph()
 
+    def classify(self, cropped):
+        with self.classification_graph.as_default():
+            predictions = self.classification_model.predict(cropped)
 
-
-    #TODO restyle method to minimal requirements (taken from tensorflow)
-    @staticmethod
-    def draw_bounding_box_on_image(image,
-                                   ymin,
-                                   xmin,
-                                   ymax,
-                                   xmax,
-                                   color='red',
-                                   thickness=4,
-                                   display_str_list=(),
-                                   use_normalized_coordinates=True):
-
-        draw = ImageDraw.Draw(image)
-        im_width, im_height = image.size
-        if use_normalized_coordinates:
-            (left, right, top, bottom) = (xmin * im_width, xmax * im_width,
-                                          ymin * im_height, ymax * im_height)
+        results = []
+        for i,p in enumerate(predictions):
+            if np.max(p) > 0.9:
+                result = np.argmax(p)
+                results.append(result)
+        if len(results) == 0:
+            return None
         else:
-            (left, right, top, bottom) = (xmin, xmax, ymin, ymax)
-        draw.line([(left, top), (left, bottom), (right, bottom),
-                   (right, top), (left, top)], width=thickness, fill=color)
-        try:
-            font = ImageFont.truetype('arial.ttf', 24)
-        except IOError:
-            font = ImageFont.load_default()
+            counts = np.bincount(results)
+            if len(counts[counts == np.max(counts)]) == 1:
+                return np.argmax(counts)
+            else:
+                return None
 
-        text_bottom = top
-        # Reverse list and print from bottom to top.
-        for display_str in display_str_list[::-1]:
-            text_width, text_height = font.getsize(display_str)
-            margin = np.ceil(0.05 * text_height)
-            draw.rectangle(
-                [(left, text_bottom - text_height - 2 * margin), (left + text_width,
-                                                                  text_bottom)],
-                fill=color)
-            draw.text(
-                (left + margin, text_bottom - text_height - margin),
-                display_str,
-                fill='black',
-                font=font)
-            text_bottom -= text_height - 2 * margin
+
+
+
 
 
 if __name__ == '__main__':
