@@ -2,9 +2,10 @@
 
 import rospy
 import numpy as np
+import bisect
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
-
+from std_msgs.msg import Int32
 import math
 
 '''
@@ -22,34 +23,46 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-
+LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
+TRAFFIC_LIGHT_LOCATIONS = [278, 735, 2000, 2550, 6284, 7000, 8500, 9724]
 
 class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
+        self.current_waypoint_index = 0
         self.current_waypoints = None
         self.current_pose = None
+
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb, queue_size=1)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
+        self.current_waypoint_pub = rospy.Publisher('current_waypoint', Int32, queue_size=1)
+        self.traffic_lights_pub = rospy.Publisher('traffic_waypoint', Int32, queue_size=1)
 
-        # TODO: Add other member variables you need below
         self.update()
         rospy.spin()
 
     # publish next N waypoints to /final_waypoints interval rate
     def update(self):
-        interval = rospy.Rate(1)
+        interval = rospy.Rate(10)
 
         while not rospy.is_shutdown():
           if(self.current_waypoints and self.current_pose):
             nearest_waypoint = self.find_nearest_waypoint()
+
+            # publish index of current waypoint
+            self.current_waypoint_pub.publish(nearest_waypoint)
+
+            # publish index of next traffic light until tl detection works
+            traffic_lights = TRAFFIC_LIGHT_LOCATIONS
+            next_light = bisect.bisect(traffic_lights, nearest_waypoint)
+            self.traffic_lights_pub.publish(traffic_lights[next_light])
+
+            # publish next N waypoints
             self.publish_next_waypoints(nearest_waypoint)
 
           interval.sleep()
@@ -84,8 +97,9 @@ class WaypointUpdater(object):
         waypoints.header.stamp = rospy.Time(0)
         waypoints.header.frame_id = self.current_pose.header.frame_id
 
-        waypoints.waypoints = self.current_waypoints[start_index:start_index + 200]
+        waypoints.waypoints = self.current_waypoints[start_index:start_index + LOOKAHEAD_WPS]
 
+        # publish next N waypoints
         self.final_waypoints_pub.publish(waypoints)
 
     def pose_cb(self, msg):
