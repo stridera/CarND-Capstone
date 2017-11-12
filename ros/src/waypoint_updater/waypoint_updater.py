@@ -22,7 +22,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -31,15 +31,15 @@ class WaypointUpdater(object):
 
         self.current_waypoints = None
         self.current_pose = None
+
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb, queue_size=1)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
+        self.current_waypoint_pub = rospy.Publisher('current_waypoint', Int32, queue_size=1)
 
-        # TODO: Add other member variables you need below
         self.update()
         rospy.spin()
 
@@ -50,6 +50,7 @@ class WaypointUpdater(object):
         while not rospy.is_shutdown():
           if(self.current_waypoints and self.current_pose):
             nearest_waypoint = self.find_nearest_waypoint()
+
             self.publish_next_waypoints(nearest_waypoint)
 
           interval.sleep()
@@ -84,8 +85,12 @@ class WaypointUpdater(object):
         waypoints.header.stamp = rospy.Time(0)
         waypoints.header.frame_id = self.current_pose.header.frame_id
 
-        waypoints.waypoints = self.current_waypoints[start_index:start_index + 200]
+        waypoints.waypoints = self.current_waypoints[start_index:start_index + LOOKAHEAD_WPS]
 
+        # publish index of closest waypoint
+        self.current_waypoint_pub(start_index)
+
+        # publish next N waypoints
         self.final_waypoints_pub.publish(waypoints)
 
     def pose_cb(self, msg):
