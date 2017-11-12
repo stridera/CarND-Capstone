@@ -3,29 +3,31 @@ import rospy
 
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import Image
+from styx_msgs.msg import Lane
+from std_msgs.msg import Int32
 
 import numpy as np
 from cv_bridge import CvBridge
 import tf as ros_tf
 import tensorflow as tf
 import cv2
-import math
 import yaml
 import os
+import math
 
 import PIL.ImageDraw as ImageDraw
 import PIL.ImageFont as ImageFont
 import PIL.Image as PILImage
 
-import keras
-from keras.models import Sequential
-from keras.layers.core import Flatten, Dense, Dropout
-from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
-from keras.optimizers import SGD
 from keras.models import model_from_json
 
 import time
 
+
+PI = math.pi
+MAX_DIST = 150.0
+MIN_DIST = 0.0
+MAX_ANGLE = 15.0*PI/180.0  #radians
 
 class TLDetector(object):
     """
@@ -37,8 +39,9 @@ class TLDetector(object):
         self.yaw = None               # Yaw of the agent
         self.traffic_lights = None    # Waypoint coordinates correspondent to each traffic light [[x1, y1]..[xn, yn]]
         self.path_dir = None          # Directory where to save the images, setup in the parameter server
-        self.count_full = 0           # A counter for images used to generate appropriate name (cancel later)
-        self.count_single = 0         # A counter for images used to generate appropriate name (cancel later)
+        self.base_waypoints = None
+        self.closest_next_tl = -1     # Id of the closest traffic light. None if not detected
+        self.stop_waypoint = None
 
         self.path_dir = rospy.get_param('~save_dir')
         self.model_file = rospy.get_param('~model_file')
@@ -58,8 +61,18 @@ class TLDetector(object):
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/image_color_throttled', Image, self.image_cb)
+        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        self.tl_publisher = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         rospy.spin()
+
+    def waypoints_cb(self, msg):
+        """
+        Callback storing all base track waypoints coordinates.
+        :param msg: styx_msgs.msg.Lane type containing the array of base waypoints
+        """
+        base_waypoints = [np.array([p.pose.pose.position.x, p.pose.pose.position.y]) for p in msg.waypoints]
+        self.base_waypoints = np.array(base_waypoints)
 
     def pose_cb(self, msg):
         """
@@ -73,6 +86,47 @@ class TLDetector(object):
         quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
         self.position = (position.x, position.y)
         self.yaw = ros_tf.transformations.euler_from_quaternion(quaternion)[2]
+        self.closest_next_tl = self._eval_next_closest_tl()
+
+    def _eval_stop_waypoint_index(self):
+        if self.closest_next_tl >= 0:
+            id_tl = self.closest_next_tl
+            for k, wp in enumerate(self.base_waypoints):
+                distance = TLDetector.eval_distance(self.traffic_lights[id_tl][0], wp[0],
+                                                    self.traffic_lights[id_tl][1], wp[1])
+
+                if distance < 0.5:
+                    self.stop_waypoint = k
+                    break
+        else:
+            self.stop_waypoint = -1
+
+    def _eval_next_closest_tl(self):
+        """
+        Compares the location and yaw of the agent in respect to the traffic lights in the map.
+        Looks for the following traffic light. If this exists and it is not too distant to the agent
+        it returns the id of such traffic light. Otherwise it returns -1
+        :return: The id of the next traffic light. None if non existing or too far.
+        """
+
+        for i, tl in enumerate(self.traffic_lights):
+            distance = TLDetector.eval_distance(tl[0], self.position[0], tl[1], self.position[1])
+            direction = math.atan2( tl[1] - self.position[1] , tl[0] - self.position[0] )
+            if (distance < MAX_DIST) and (distance > MIN_DIST) and (abs(direction - self.yaw) < MAX_ANGLE) :
+                return i
+        return -1
+
+    @staticmethod
+    def eval_distance(x1, x2, y1, y2):
+        """
+        Evaluates the Euclidean distance between points (x1, y1) and (x2, y2)
+        :param x1: X-coordinate of first point
+        :param x2: X-coordinate of second point
+        :param y1: Y-coordinate of first point
+        :param y2: Y-coordinate of second point
+        :return: The Euclidean distance between the points
+        """
+        return math.sqrt((x1-x2)**2 + (y1-y2)**2)
 
     def image_cb(self, msg):
 
@@ -103,16 +157,19 @@ class TLDetector(object):
             if im_cropped is not None:
                 cropped.append(im_cropped)
 
-        #filename = self.path_dir + "full_pics_" + str(self.count_full).zfill(5) + ".png"
-        #self.count_full += 1
-        #image.save(filename)
-
         if len(cropped) == 0:
             print ("No tentative traffic lights cropped properly...")
             return None
         cropped = np.array(cropped)
         classification = self._classify(cropped)
         print ("Next traffic light state: {}".format(classification))
+
+        if classification == 0:
+            self._eval_stop_waypoint_index()
+            self.tl_publisher.publish(Int32(self.stop_waypoint))
+        else:
+            self.tl_publisher.publish(Int32(-1))
+
 
     def _detect(self, image_np):
         image_tensor = self.detection_graph.get_tensor_by_name('image_tensor:0')
@@ -132,9 +189,6 @@ class TLDetector(object):
             if np.max(p) > 0.9:
                 result = np.argmax(p)
                 results.append(result)
-                #filename = self.path_dir + "prediction_" + str(result) + "_" + str(self.count_single).zfill(5) + ".png"
-                #self.count_single += 1
-                #cv2.imwrite(filename, cropped[i])
         if len(results) == 0:
             return None
         else:
