@@ -1,27 +1,25 @@
 #!/usr/bin/env python
-import rospy
 
+import rospy
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import Image
 from styx_msgs.msg import Lane
 from std_msgs.msg import Int32
 
-import numpy as np
 from cv_bridge import CvBridge
 import tf as ros_tf
-import tensorflow as tf
-import cv2
+
+import numpy as np
 import yaml
 import os
 import math
+import time
 
-import PIL.ImageDraw as ImageDraw
-import PIL.ImageFont as ImageFont
+import cv2
 import PIL.Image as PILImage
 
+import tensorflow as tf
 from keras.models import model_from_json
-
-import time
 
 
 PI = math.pi
@@ -38,7 +36,7 @@ class TLDetector(object):
 
         self.position = None          # Cartesian agent position (x, y)
         self.yaw = None               # Yaw of the agent
-        self.traffic_lights = None    # Waypoint coordinates correspondent to each traffic light [[x1, y1]..[xn, yn]]
+        self.stop_lines = None        # Waypoint coordinates correspondent to each traffic light [[x1, y1]..[xn, yn]]
         self.path_dir = None          # Directory where to save the images, setup in the parameter server
         self.base_waypoints = None
         self.closest_next_tl = -1     # Id of the closest traffic light. None if not detected
@@ -52,7 +50,7 @@ class TLDetector(object):
 
         config_string = rospy.get_param("/traffic_light_config")
         config = yaml.load(config_string)
-        self.traffic_lights = np.array(config["stop_line_positions"])
+        self.stop_lines = np.array(config["stop_line_positions"])
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/image_color_throttled', Image, self.image_cb)
@@ -81,7 +79,8 @@ class TLDetector(object):
         quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
         self.position = (position.x, position.y)
         self.yaw = ros_tf.transformations.euler_from_quaternion(quaternion)[2]
-        self.closest_next_tl = self._eval_next_closest_tl()
+        if self.base_waypoints is not None:
+            self.closest_next_tl = self._eval_next_closest_tl()
 
     def image_cb(self, msg):
 
@@ -125,13 +124,13 @@ class TLDetector(object):
     def _eval_stop_waypoint_index(self):
         if self.closest_next_tl >= 0:
             id_tl = self.closest_next_tl
+            min_distance = 10000
             for k, wp in enumerate(self.base_waypoints):
-                distance = TLDetector.eval_distance(self.traffic_lights[id_tl][0], wp[0],
-                                                    self.traffic_lights[id_tl][1], wp[1])
-                #TODO Choose the min_distance better
-                if distance < 0.5:
+                distance = TLDetector.eval_distance(self.stop_lines[id_tl][0], wp[0],
+                                                    self.stop_lines[id_tl][1], wp[1])
+                if distance < min_distance:
+                    min_distance = distance
                     self.stop_waypoint = k
-                    break
         else:
             self.stop_waypoint = -1
 
@@ -143,7 +142,7 @@ class TLDetector(object):
         :return: The id of the next traffic light. None if non existing or too far.
         """
 
-        for i, tl in enumerate(self.traffic_lights):
+        for i, tl in enumerate(self.stop_lines):
             distance = TLDetector.eval_distance(tl[0], self.position[0], tl[1], self.position[1])
             direction = math.atan2( tl[1] - self.position[1] , tl[0] - self.position[0] )
             if (distance < MAX_DIST) and (distance > MIN_DIST) and (abs(direction - self.yaw) < MAX_ANGLE) :
@@ -163,10 +162,16 @@ class TLDetector(object):
         return math.sqrt((x1-x2)**2 + (y1-y2)**2)
 
     @staticmethod
-    def _prepare_for_class(image, boxes):
+    def _prepare_for_class(image, box):
+        """
+        It crops a box from the image
+        :param image: The image
+        :param box: The box to crop
+        :return: The resized cropped image or None if the conditions are not satisfied
+        """
         shape = image.shape
-        (left, right, top, bottom) = (boxes[0, 1] * shape[2], boxes[0, 3] * shape[2],
-                                      boxes[0, 0] * shape[1], boxes[0, 2] * shape[1])
+        (left, right, top, bottom) = (box[0, 1] * shape[2], box[0, 3] * shape[2],
+                                      box[0, 0] * shape[1], box[0, 2] * shape[1])
 
         #Assuming that crop_height > crop_width valid for tf_api and standard traffic lights
         crop_height = int(bottom - top)
@@ -241,9 +246,6 @@ class Classifier(object):
                 return np.argmax(counts)
             else:
                 return None
-
-
-
 
 
 
