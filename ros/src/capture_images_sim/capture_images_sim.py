@@ -87,7 +87,7 @@ class ImageCapture(object):
             print "Image not processed, next traffic light too far away..."
         else:
             cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")
-            cv_image = ImageCapture._image_process(cv_image)
+            #cv_image = ImageCapture._image_process(cv_image)
 
             path = self.path_dir + str(self.save_count).zfill(6) + "_"
             path += str(self.state_closest_tl) + "_"
