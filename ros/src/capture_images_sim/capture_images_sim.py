@@ -82,17 +82,21 @@ class ImageCapture(object):
         with customized name including an id, the traffic light state and the current speed in m/s
         :param msg: Ros message of type sensor_msgs/Image
         """
-        cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")
-        cv_image = ImageCapture._image_process(cv_image)
 
-        path = self.path_dir + str(self.save_count).zfill(10) + "_"
-        path += str(self.state_closest_tl) + "_"
+        if self.state_closest_tl == -1:
+            print "Image not processed, next traffic light too far away..."
+        else:
+            cv_image = CvBridge().imgmsg_to_cv2(msg, "bgr8")
+            cv_image = ImageCapture._image_process(cv_image)
 
-        v = math.sqrt(self.speed[0] ** 2 + self.speed[1] ** 2)
-        s_v = "%.2f" % v
-        path += s_v + ".png"
-        cv2.imwrite(path, cv_image)
-        self.save_count += 1
+            path = self.path_dir + str(self.save_count).zfill(6) + "_"
+            path += str(self.state_closest_tl) + "_"
+
+            v = math.sqrt(self.speed[0] ** 2 + self.speed[1] ** 2)
+            s_v = "%.2f" % v
+            path += s_v + ".png"
+            cv2.imwrite(path, cv_image)
+            self.save_count += 1
 
     def tl_cb(self, msg):
         """
@@ -158,6 +162,7 @@ class ImageCapture(object):
         """
         if not os.path.isdir(self.path_dir):
             os.makedirs(self.path_dir)
+
 
 if __name__ == '__main__':
     try:

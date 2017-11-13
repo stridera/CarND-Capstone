@@ -9,12 +9,24 @@
     <!--Traffic Light Locations and Camera Config -->
     <param name="traffic_light_config" textfile="$(find tl_detector)/sim_traffic_light_config.yaml" />
 
-    <!--Throttle node for image publisher -->
-    <node name="image_color_throttler" type="throttle" pkg="topic_tools" args="messages /image_color 10
-    /image_color_throttled" />
+    <!--Waypoint Loader -->
+    <include file="$(find waypoint_loader)/launch/waypoint_loader.launch"/>
+
+    <!--Waypoint Follower Node -->
+    <include file="$(find waypoint_follower)/launch/pure_pursuit.launch"/>
+
+    <!--Waypoint Updater Node -->
+    <include file="$(find waypoint_updater)/launch/waypoint_updater.launch"/>
+
+    <!--DBW Node -->
+    <include file="$(find twist_controller)/launch/dbw_sim.launch"/>
 
     <!--Throttle node for image publisher -->
-    <node name="tl_throttler" type="throttle" pkg="topic_tools" args="messages /vehicle/traffic_lights 10
+    <node name="image_color_throttler" type="throttle" pkg="topic_tools" args="messages /image_color 5
+    /image_color_throttled" />
+
+    <!--Throttle node for traffic_light_state publisher -->
+    <node name="tl_throttler" type="throttle" pkg="topic_tools" args="messages /vehicle/traffic_lights 5
     /vehicle/traffic_lights_throttled" />
 
 </launch>
