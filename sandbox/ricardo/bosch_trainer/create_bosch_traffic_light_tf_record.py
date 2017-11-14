@@ -22,7 +22,10 @@ flags = tf.app.flags
 flags.DEFINE_string('output_path', CONVERTED_DATA_FOLDER, 'Path to output TFRecord')
 FLAGS = flags.FLAGS
 
-# IMPORTANT: in the config file set the number of classes folliwing the number of classes set here.
+# IMPORTANT: if this dictionary changes, update the number of classes in:
+#  - faster_rcnn_resnet101_bosch.config - num_classes: 7
+#  - ssd_mobilenet_v1_bosch.config - num_classes: 7
+#  - test_current_checkpoint.py - NUM_CLASSES = 7
 LABEL_DICT =  {
     'Green' : 1,    
     'Red' : 2,  
