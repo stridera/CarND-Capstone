@@ -44,7 +44,7 @@ TRAIN_PATH           = TRANSFER_LEARNING_FOLDER + '/model_ckpt'
 PATH_TO_FROZEN_GRAPH = TRANSFER_LEARNING_FOLDER + '/model_frozen_graph_' + LAST_CHECKPOINT + '/frozen_inference_graph.pb'
 
 # List of the strings that is used to add correct label for each box.
-PATH_TO_LABELS = os.path.join(TRANSFER_LEARNING_FOLDER, 'bosch_label_map.pbtxt')
+PATH_TO_LABELS = os.path.join(TRANSFER_LEARNING_FOLDER, '/data/bosch_label_map.pbtxt')
 NUM_CLASSES = 7
 
 # Folder with the images in jpg or png
