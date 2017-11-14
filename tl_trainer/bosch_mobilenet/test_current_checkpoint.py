@@ -17,10 +17,14 @@ import zipfile
 try:
   OBJECT_DETECTION_API_FOLDER = os.environ['OBJECT_DETECTION_API_FOLDER']
   TRANSFER_LEARNING_FOLDER = os.environ['CURRENT_TRANSFER_LEARNING_FOLDER']
+except:
+  sys.exit('ERROR: Run set_env.bash to have the folders information as environmental variables.')
+  
+try:  
   LAST_CHECKPOINT = os.environ['LAST_CHECKPOINT']
   print('Last checkpoint: ', LAST_CHECKPOINT)
 except:
-  sys.exit('ERROR: Run set_env.bash to have the folders information as environmental variables.')
+  sys.exit('ERROR: LAST_CHECKPOINT environmental variable not defined')
 
 sys.path.insert(0, OBJECT_DETECTION_API_FOLDER)
 
@@ -126,8 +130,8 @@ with detection_graph.as_default():
       plt.imshow(image_np)
       plt.title(image_path)    
       #print('boxes', boxes)
-      print('classes', classes)
-      print('scores', scores)
+      #print('classes', classes)
+      #print('scores', scores)
 
       plt.show()
 

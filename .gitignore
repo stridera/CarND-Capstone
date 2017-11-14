@@ -4,3 +4,11 @@ build
 devel
 
 profile.tmp
+
+tl_trainer/bosch_mobilenet/bosch_label_map\.pbtxt
+
+tl_trainer/bosch_mobilenet/model_ckpt/
+
+tl_trainer/bosch_mobilenet/data/
+
+*.data-00000-of-00001
