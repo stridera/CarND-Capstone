@@ -54,6 +54,44 @@ OMIT_LABELS_LIST = [
     'GreenStraightLeft',
     ]
 
+def get_dataset_stats(images, output_file = None):
+    """
+    Prints statistic data for a list of samples from the Bosch dataset.
+
+    :param images: samples list
+    :param output_file: If not None, it is the name of the file to store the stats.
+    """
+    
+    num_images = len(images)
+    num_lights = 0
+    appearances = {'occluded': 0}
+
+    for image in images:
+        num_lights += len(image['boxes'])
+        for box in image['boxes']:
+            try:
+                appearances[box['label']] += 1
+            except KeyError:
+                appearances[box['label']] = 1
+
+            if box['occluded']:
+                appearances['occluded'] += 1
+
+    output_text =  'Number of images: ' + str(num_images) + '\n'
+    output_text += 'Number of traffic lights: ' + str(num_lights) + '\n'
+    
+    output_text += 'Labels:\n'
+    for k, l in appearances.items():
+        output_text += '{: 10} [{: 3} %] {}\n'.format(l, int(l/num_lights*100), k)
+        
+
+    if output_file is not None:
+        with open(output_file, 'w') as f:
+            f.write(output_text)
+    else:
+        print(output_text)    
+        
+        
 def create_tf_example(example):
     
     # Bosch
@@ -105,7 +143,9 @@ def create_tf_example(example):
 
 def generate_tf_record(output_file_name, samples):
     
-    output_file_path = FLAGS.output_path + '/' + output_file_name
+    get_dataset_stats(samples, CONVERTED_DATA_FOLDER + '/' + output_file_name + '_stats.txt')
+    
+    output_file_path = FLAGS.output_path + '/' + output_file_name + '.record'
     if os.path.isfile(output_file_path):
         sys.exit('ERROR: The record file exist already. If you want to create a new one please delete or rename the old one.\n' + output_file_path)
 
@@ -132,6 +172,7 @@ def generate_tf_record(output_file_name, samples):
 print('Reading Bosch Yaml file...')
 INPUT_YAML = BOSCH_DATA_FOLDER + '/train.yaml'
 all_samples = yaml.load(open(INPUT_YAML, 'rb').read())
+
 
 len_samples = len(all_samples)
 
@@ -165,12 +206,23 @@ len_val_samples = len_samples - len_train_samples
 print('Train samples: {}, validation samples: {}'.format(len_train_samples, len_val_samples))
 
 # Shuffle before splitting
-shuffle(all_samples)
-train_samples = all_samples[:len_train_samples]
-val_samples = all_samples[:len_val_samples]
+reshuffle = True
+while(reshuffle):
+    shuffle(all_samples)
+    train_samples = all_samples[:len_train_samples]
+    val_samples = all_samples[:len_val_samples]
+    print('Training samples:')
+    get_dataset_stats(train_samples)
+    print('Validation samples:')
+    get_dataset_stats(val_samples)
+    
+    answer = input('These are the stats of the data, continue? (no - reshuffle, anything else - go)\n')
+    if answer.lower() != 'no':
+        reshuffle = False
+        
 
-generate_tf_record('train_data.record', train_samples)
-generate_tf_record('val_data.record', val_samples)
+generate_tf_record('train_data', train_samples)
+generate_tf_record('val_data', val_samples)
 
 # Generate the label map
 text = ''
@@ -178,6 +230,6 @@ for key, item in LABEL_DICT.items():
   new_text = "item {{\n  id: {}\n  name: '{}'\n}}\n\n".format(item, key)
   text = text + new_text
 
-with open('bosch_label_map.pbtxt', 'w') as f:
+with open(CONVERTED_DATA_FOLDER + '/bosch_label_map.pbtxt', 'w') as f:
   f.write(text)
 

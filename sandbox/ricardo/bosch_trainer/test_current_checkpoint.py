@@ -1,18 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Spyder Editor
-
-This is a temporary script file.
+Code to test the checkpoint resutls on some sample figures.
 """
-
 
 import numpy as np
 import os
 import six.moves.urllib as urllib
 import sys
-import tarfile
 import tensorflow as tf
-import zipfile
 
 try:
   OBJECT_DETECTION_API_FOLDER = os.environ['OBJECT_DETECTION_API_FOLDER']
@@ -50,13 +45,21 @@ PATH_TO_FROZEN_GRAPH = TRANSFER_LEARNING_FOLDER + '/model_frozen_graph_' + LAST_
 
 # List of the strings that is used to add correct label for each box.
 PATH_TO_LABELS = os.path.join(TRANSFER_LEARNING_FOLDER, 'bosch_label_map.pbtxt')
-NUM_CLASSES = 2
+NUM_CLASSES = 7
 
-# Folder with the images in jpg
+# Folder with the images in jpg or png
 PATH_TO_TEST_IMAGES_DIR = TRANSFER_LEARNING_FOLDER + '/test_images'
-#TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(i)) for i in range(1, 3) ]
 
-TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, file) for file in os.listdir(PATH_TO_TEST_IMAGES_DIR) if file.endswith('.png')]
+# File paths to test.
+TEST_IMAGE_PATHS   = [os.path.join(PATH_TO_TEST_IMAGES_DIR, file) 
+                      for file in os.listdir(PATH_TO_TEST_IMAGES_DIR) 
+                      if (file.endswith('.png') or file.endswith('.jpg') or file.endswith('.jpeg')) ]
+
+OUTPUT_IMAGE_PATHS = [os.path.join(PATH_TO_TEST_IMAGES_DIR, 'result_for_ckp_' + LAST_CHECKPOINT , file) 
+                      for file in os.listdir(PATH_TO_TEST_IMAGES_DIR) 
+                      if (file.endswith('.png') or file.endswith('.jpg') or file.endswith('.jpeg')) ]
+
+os.mkdir(os.path.join(PATH_TO_TEST_IMAGES_DIR, 'result_for_ckp_' + LAST_CHECKPOINT))
 
 # Size, in inches, of the output images.
 IMAGE_SIZE = (12, 8)
@@ -105,7 +108,7 @@ with detection_graph.as_default():
     
     print('Starting inference of {} images ...'.format(len(TEST_IMAGE_PATHS)))
     for im_num, image_path in enumerate(TEST_IMAGE_PATHS):
-      
+      print('Processing image ', im_num, '...')
 
       image = Image.open(image_path)
       # the array based representation of the image will be used later in order to prepare the
@@ -133,7 +136,8 @@ with detection_graph.as_default():
       #print('classes', classes)
       #print('scores', scores)
 
-      plt.show()
+      #plt.show()
+      plt.savefig(OUTPUT_IMAGE_PATHS[im_num])
 
 print('End of the program')    
     

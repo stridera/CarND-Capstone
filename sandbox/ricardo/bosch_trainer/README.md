@@ -71,17 +71,11 @@ During training, to check the GPU state, in a new terminal:
 
 nvidia-smi --loop-ms=1000
 
-If your GPU has plenty of memory free, you can try increasing "batch_size" in the .config file.
-
 Also, tensorboard can be used to check progress with:
 
 tensorboard --logdir=${CURRENT_TRANSFER_LEARNING_FOLDER}/model_ckpt
 
 (if it is a different terminal, remember to run set_env.bash)
-
-Then open in a browser:
-
-http://localhost:6006/
 
 
 ### Generate frozen graph file
