@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export LAST_CHECKPOINT=100
+export LAST_CHECKPOINT=18594
 
 python ${OBJECT_DETECTION_API_FOLDER}/research/object_detection/export_inference_graph.py \
     --input_type image_tensor \
