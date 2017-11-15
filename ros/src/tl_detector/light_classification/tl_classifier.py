@@ -1,19 +1,13 @@
-from styx_msgs.msg import TrafficLight
+from abc import ABCMeta, abstractmethod
 
-class TLClassifier(object):
-    def __init__(self):
-        #TODO load classifier
-        pass
 
+class TLClassifier:
+    """
+    Abstract class for traffic light classification from RGB images
+    """
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
     def get_classification(self, image):
-        """Determines the color of the traffic light in the image
+        raise NotImplementedError()
 
-        Args:
-            image (cv::Mat): image containing the traffic light
-
-        Returns:
-            int: ID of traffic light color (specified in styx_msgs/TrafficLight)
-
-        """
-        #TODO implement light color prediction
-        return TrafficLight.UNKNOWN
