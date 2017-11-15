@@ -18,6 +18,10 @@
     <!--Traffic Light Detector Node -->
     <include file="$(find tl_detector)/launch/tl_detector.launch"/>
 
+    <!--Throttle node for image publisher -->
+    <node name="image_color_throttler" type="throttle" pkg="topic_tools" args="messages /image_color 8
+    /image_color_throttled" />
+
     <!--Traffic Light Locations and Camera Config -->
     <param name="traffic_light_config" textfile="$(find tl_detector)/sim_traffic_light_config.yaml" />
 </launch>
