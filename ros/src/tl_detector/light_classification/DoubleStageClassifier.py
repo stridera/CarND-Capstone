@@ -7,6 +7,7 @@ from keras.utils.data_utils import get_file
 import os
 import numpy as np
 import cv2
+import errno
 
 from tl_classifier import TLClassifier
 
@@ -109,6 +110,14 @@ class Detector(object):
 
 class Classifier(object):
     def __init__(self, model_path):
+
+        # make directory pre-r
+        try:
+            os.makedirs(model_path)
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                raise
+            pass
 
         # TODO: Add hash if/when we upload a different model
         model_file = get_file(
