@@ -34,7 +34,8 @@ class DoubleStageClassifier(TLClassifier):
         else:
             print ("Detected possible {} traffic lights".format(len(tl_detections)))
 
-        cropped = np.array([self._prepare_for_class(image, boxes[:, i, :]) for i in tl_detections if i is not None])
+        cropped = np.array(filter(lambda x: x is not None, [self._prepare_for_class(image, boxes[:, i, :]) for i in tl_detections if i is not None]))
+        
         if len(cropped) == 0:
             print ("Detected no traffic lights...")
             return TrafficLight.UNKNOWN
@@ -111,7 +112,7 @@ class Detector(object):
 class Classifier(object):
     def __init__(self, model_path):
 
-        # make directory pre-r
+        # make directory pre-requisites
         try:
             os.makedirs(model_path)
         except OSError as exc:
@@ -125,6 +126,8 @@ class Classifier(object):
             BASE_MODEL_URL)
 
         self.classification_model = load_model(model_file)
+
+        self.classification_model.summary()
 
         self.classification_model._make_predict_function()  # see https://github.com/fchollet/keras/issues/6124
         self.classification_graph = tf.get_default_graph()
