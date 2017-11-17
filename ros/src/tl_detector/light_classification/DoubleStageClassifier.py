@@ -2,13 +2,15 @@
 from styx_msgs.msg import TrafficLight
 
 import tensorflow as tf
-from keras.models import model_from_json
+from keras.models import load_model
+from keras.utils.data_utils import get_file
 import os
 import numpy as np
 import cv2
 
 from tl_classifier import TLClassifier
 
+BASE_MODEL_URL = 'https://s3.eu-central-1.amazonaws.com/system-shock/model.h5'
 
 class DoubleStageClassifier(TLClassifier):
     def __init__(self, **kwargs):
@@ -107,12 +109,13 @@ class Detector(object):
 
 class Classifier(object):
     def __init__(self, model_path):
-        json_file = open(os.path.join(model_path, 'model.json'), 'r')
-        loaded_model_json = json_file.read()
-        json_file.close()
 
-        self.classification_model = model_from_json(loaded_model_json)
-        self.classification_model.load_weights(os.path.join(model_path, 'model.h5'))
+        # TODO: Add hash if/when we upload a different model
+        model_file = get_file(
+            os.path.abspath(os.path.join(model_path, 'model.h5')),
+            BASE_MODEL_URL)
+
+        self.classification_model = load_model(model_file)
 
         self.classification_model._make_predict_function()  # see https://github.com/fchollet/keras/issues/6124
         self.classification_graph = tf.get_default_graph()
