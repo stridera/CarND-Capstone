@@ -2,5 +2,5 @@
 
 build
 devel
-
+data/traffic-light-models/*
 profile.tmp
