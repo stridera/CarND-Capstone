@@ -6,6 +6,7 @@ from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 from std_msgs.msg import Int32
 import math
+import copy
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -31,6 +32,7 @@ class WaypointUpdater(object):
         self.current_waypoint_index = 0
         self.current_waypoints = None
         self.current_pose = None
+        self.stop_light_waypoints = None
 
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
@@ -52,7 +54,8 @@ class WaypointUpdater(object):
             nearest_waypoint = self.find_nearest_waypoint()
 
             # publish index of current waypoint
-            self.current_waypoint_pub.publish(nearest_waypoint)
+            self.current_waypoint_index = nearest_waypoint
+            # self.current_waypoint_pub.publish(nearest_waypoint)
 
             # publish next N waypoints
             self.publish_next_waypoints(nearest_waypoint)
@@ -91,6 +94,8 @@ class WaypointUpdater(object):
 
         waypoints.waypoints = self.current_waypoints[start_index:start_index + LOOKAHEAD_WPS]
 
+        if(self.stop_light_waypoints):
+		    waypoints.waypoints = self.stop_light_waypoints
         # publish next N waypoints
         self.final_waypoints_pub.publish(waypoints)
 
@@ -104,8 +109,37 @@ class WaypointUpdater(object):
         self.base_waypoints_sub.unregister()
 
     def traffic_cb(self, msg):
-        # TODO: Callback for /traffic_waypoint message. Implement
-        pass
+        if(self.current_waypoints is None) or (self.current_waypoint_index is 0):
+            return
+
+        # set waypoint index of stop light
+        stop_light = msg.data
+
+        # if stop light is detected and ahead of our current pos
+        if(stop_light is not -1) and (stop_light >= self.current_waypoint_index):
+            car_pos = self.current_pose.pose.position
+            wpt_pos = self.current_waypoints[self.current_waypoint_index].pose.pose.position
+
+            self.stop_light_waypoints = []
+
+            base_distance = self.calculate_distance(car_pos, wpt_pos)
+            total_distance = base_distance + self.distance(self.current_waypoints, self.current_waypoint_index, stop_light)
+
+            target_velocity = math.sqrt(2 * total_distance)
+
+            for i in range (self.current_waypoint_index, self.current_waypoint_index + LOOKAHEAD_WPS):
+                velocity = target_velocity * (max(total_distance-base_distance, 0.))/total_distance
+
+                waypoint = copy.deepcopy(self.current_waypoints[i])
+                waypoint.twist.twist.linear.x = velocity
+
+                self.stop_light_waypoints.append(waypoint)
+
+                if (i < stop_light):
+                    base_distance += self.distance(self.current_waypoints, i, i + 1)
+
+        else:
+            self.stop_light_waypoints = None
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
