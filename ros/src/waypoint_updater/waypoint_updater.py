@@ -139,8 +139,7 @@ class WaypointUpdater(object):
                 x2 = self.current_waypoints[i+1].pose.pose.position.x
                 y2 = self.current_waypoints[i+1].pose.pose.position.y
                 theta = math.atan2(y2-y1, x2-x1)
-                v = current_velocity*math.sqrt(base_distance + self.distance(self.current_waypoints, i, stop_light)
-                                               / total_distance)
+                v = current_velocity*math.sqrt(self.distance(self.current_waypoints, i, stop_light) / total_distance)
                 vx = v*math.cos(theta)
                 vy = v*math.sin(theta)
                 waypoint = copy.deepcopy(self.current_waypoints[i])
