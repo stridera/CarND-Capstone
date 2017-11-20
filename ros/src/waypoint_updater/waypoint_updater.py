@@ -130,8 +130,8 @@ class WaypointUpdater(object):
 
             base_distance = self.calculate_distance(car_pos, wpt_pos)
             total_distance = base_distance + self.distance(self.current_waypoints, self.current_waypoint_index, stop_light)
-            current_velocity = math.sqrt(self.current_velocity.twist.twist.linear.x**2 +
-                                         self.current_velocity.twist.twist.linear.y**2)
+            current_velocity = math.sqrt(self.current_velocity.twist.linear.x**2 +
+                                         self.current_velocity.twist.linear.y**2)
 
             for i in range(self.current_waypoint_index, self.current_waypoint_index + LOOKAHEAD_WPS):
                 x1 = self.current_waypoints[i].pose.pose.position.x
