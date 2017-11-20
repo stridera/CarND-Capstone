@@ -98,7 +98,7 @@ class WaypointUpdater(object):
 
         if(self.stop_light_waypoints):
 		    waypoints.waypoints = self.stop_light_waypoints
-        # publish next N waypoints
+
         self.final_waypoints_pub.publish(waypoints)
 
     def pose_cb(self, msg):
@@ -118,8 +118,7 @@ class WaypointUpdater(object):
             return
 
         # set waypoint index of stop light
-        stop_light = msg.data
-        print stop_light
+        stop_light = msg.data - 4
 
         # if stop light is detected and ahead of our current pos
         if(stop_light is not -1) and (stop_light >= self.current_waypoint_index):
@@ -134,31 +133,10 @@ class WaypointUpdater(object):
                                          self.current_velocity.twist.linear.y**2)
 
             for i in range(self.current_waypoint_index, self.current_waypoint_index + LOOKAHEAD_WPS):
-                x1 = self.current_waypoints[i].pose.pose.position.x
-                y1 = self.current_waypoints[i].pose.pose.position.y
-                x2 = self.current_waypoints[i+1].pose.pose.position.x
-                y2 = self.current_waypoints[i+1].pose.pose.position.y
-                theta = math.atan2(y2-y1, x2-x1)
                 v = current_velocity*math.sqrt(self.distance(self.current_waypoints, i, stop_light) / total_distance)
-                vx = v*math.cos(theta)
-                vy = v*math.sin(theta)
                 waypoint = copy.deepcopy(self.current_waypoints[i])
-                waypoint.twist.twist.linear.x = vx
-                waypoint.twist.twist.linear.y = vy
+                waypoint.twist.twist.linear.x = v
                 self.stop_light_waypoints.append(waypoint)
-
-            #target_velocity = math.sqrt(2 * total_distance)
-
-            #for i in range (self.current_waypoint_index, self.current_waypoint_index + LOOKAHEAD_WPS):
-            #    velocity = target_velocity * (max(total_distance-base_distance, 0.))/total_distance
-
-            #    waypoint = copy.deepcopy(self.current_waypoints[i])
-            #    waypoint.twist.twist.linear.x = velocity
-
-            #    self.stop_light_waypoints.append(waypoint)
-
-            #    if (i < stop_light):
-            #        base_distance += self.distance(self.current_waypoints, i, i + 1)
 
         else:
             self.stop_light_waypoints = None
