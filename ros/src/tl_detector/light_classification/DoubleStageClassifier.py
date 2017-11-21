@@ -11,7 +11,8 @@ import errno
 
 from tl_classifier import TLClassifier
 
-BASE_MODEL_URL = 'https://s3.eu-central-1.amazonaws.com/system-shock/model.h5'
+CLASSIFIER_MODEL_URL = 'https://s3.eu-central-1.amazonaws.com/system-shock/model.h5'
+DETECTOR_MODEL_URL   = 'https://s3.eu-central-1.amazonaws.com/system-shock/frozen_inference_graph.pb'
 
 class DoubleStageClassifier(TLClassifier):
     def __init__(self, **kwargs):
@@ -87,6 +88,19 @@ class DoubleStageClassifier(TLClassifier):
 class Detector(object):
     def __init__(self, model_file):
 
+         # make directory pre-requisites
+        try:
+            os.makedirs(os.path.dirname(model_file))
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                raise
+            pass
+
+        # TODO: Add hash if/when we upload a different model
+        model_file = get_file(
+            os.path.abspath(model_file),
+            DETECTOR_MODEL_URL)
+
         self.model_file = model_file
         self.detection_graph = tf.Graph()
         self._import_tf_graph()
@@ -123,7 +137,7 @@ class Classifier(object):
         # TODO: Add hash if/when we upload a different model
         model_file = get_file(
             os.path.abspath(os.path.join(model_path, 'model.h5')),
-            BASE_MODEL_URL)
+            CLASSIFIER_MODEL_URL)
 
         self.classification_model = load_model(model_file)
 
