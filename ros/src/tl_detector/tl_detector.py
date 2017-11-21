@@ -16,7 +16,7 @@ import PIL.Image as PILImage
 from light_classification.DoubleStageClassifier import DoubleStageClassifier
 
 PI = math.pi
-MAX_DIST = 150.0
+MAX_DIST = 100.0
 MIN_DIST = 0.0
 MAX_ANGLE = 15.0*PI/180.0
 

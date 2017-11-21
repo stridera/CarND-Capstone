@@ -2,7 +2,7 @@
 
 import rospy
 import numpy as np
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from styx_msgs.msg import Lane, Waypoint
 from std_msgs.msg import Int32
 import math
@@ -32,11 +32,13 @@ class WaypointUpdater(object):
         self.current_waypoint_index = 0
         self.current_waypoints = None
         self.current_pose = None
+        self.current_velocity = None
         self.stop_light_waypoints = None
 
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb, queue_size=1)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
@@ -96,11 +98,14 @@ class WaypointUpdater(object):
 
         if(self.stop_light_waypoints):
 		    waypoints.waypoints = self.stop_light_waypoints
-        # publish next N waypoints
+
         self.final_waypoints_pub.publish(waypoints)
 
     def pose_cb(self, msg):
         self.current_pose = msg
+
+    def velocity_cb(self, msg):
+        self.current_velocity = msg
 
     def waypoints_cb(self, waypoints):
         self.current_waypoints = waypoints.waypoints
@@ -113,7 +118,7 @@ class WaypointUpdater(object):
             return
 
         # set waypoint index of stop light
-        stop_light = msg.data
+        stop_light = msg.data - 4
 
         # if stop light is detected and ahead of our current pos
         if(stop_light is not -1) and (stop_light >= self.current_waypoint_index):
@@ -124,19 +129,14 @@ class WaypointUpdater(object):
 
             base_distance = self.calculate_distance(car_pos, wpt_pos)
             total_distance = base_distance + self.distance(self.current_waypoints, self.current_waypoint_index, stop_light)
+            current_velocity = math.sqrt(self.current_velocity.twist.linear.x**2 +
+                                         self.current_velocity.twist.linear.y**2)
 
-            target_velocity = math.sqrt(2 * total_distance)
-
-            for i in range (self.current_waypoint_index, self.current_waypoint_index + LOOKAHEAD_WPS):
-                velocity = target_velocity * (max(total_distance-base_distance, 0.))/total_distance
-
+            for i in range(self.current_waypoint_index, self.current_waypoint_index + LOOKAHEAD_WPS):
+                v = current_velocity*math.sqrt(self.distance(self.current_waypoints, i, stop_light) / total_distance)
                 waypoint = copy.deepcopy(self.current_waypoints[i])
-                waypoint.twist.twist.linear.x = velocity
-
+                waypoint.twist.twist.linear.x = v
                 self.stop_light_waypoints.append(waypoint)
-
-                if (i < stop_light):
-                    base_distance += self.distance(self.current_waypoints, i, i + 1)
 
         else:
             self.stop_light_waypoints = None
