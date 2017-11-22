@@ -34,7 +34,7 @@ class Controller(object):
         now = rospy.get_time()
         delta = now - self.last_time if self.last_time else 0.1
         last_time = now
-        return delta
+        return delta / 1000
 
 
     def control(self, *args, **kwargs):
@@ -45,11 +45,10 @@ class Controller(object):
         velocity_error = linear_setpoint - linear_current
 
         delta = self.get_delta()
-
         unfiltered = self.pid.step(velocity_error, delta)
         velocity = self.lowpass.filt(unfiltered)
-
-
+        # print("Linear Setpoint: {}  Linear Current: {}  Velocity Error: {}  Delta: {}  Unfiltered PID Output: {}  Lowpass Filtered: {}"
+        #     .format(linear_setpoint, linear_current, velocity_error, delta, unfiltered, velocity))
 
         brake = 0.
         if velocity <= 0.:
@@ -60,4 +59,5 @@ class Controller(object):
         throttle = velocity
         steer = self.yaw_controller.get_steering(linear_setpoint, angular_setpoint, linear_current)
 
+        print("Throttle: {}  Brake: {}  Steering: {}".format(throttle, brake, steer))
         return throttle, brake, steer
