@@ -23,82 +23,68 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 100
+STOP_SHIFT = 10
 
 class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
-        self.current_waypoint_index = 0
-        self.current_waypoints = None
+        self.current_waypoint_id = None
+        self.track_waypoints = None
         self.current_pose = None
         self.current_velocity = None
-        self.stop_light_waypoints = None
+        self.stop_waypoint_id = -1
 
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb, queue_size=1)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-        self.current_waypoint_pub = rospy.Publisher('current_waypoint', Int32, queue_size=1)
-
         self.update()
         rospy.spin()
 
     # publish next N waypoints to /final_waypoints interval rate
     def update(self):
-        interval = rospy.Rate(10)
+        #If rate smaller the car stops too late
+        rate = rospy.Rate(30)
 
         while not rospy.is_shutdown():
-          if(self.current_waypoints and self.current_pose):
-            nearest_waypoint = self.find_nearest_waypoint()
-
-            # publish index of current waypoint
-            self.current_waypoint_index = nearest_waypoint
-            # self.current_waypoint_pub.publish(nearest_waypoint)
-
-            # publish next N waypoints
-            self.publish_next_waypoints(nearest_waypoint)
-
-          interval.sleep()
+          if self.track_waypoints and self.current_pose:
+            self.current_waypoint_id = self.find_nearest_waypoint()
+            self.publish_next_waypoints()
+          rate.sleep()
 
     # calculate the euclidian distance between our car and a waypoint
-    def calculate_distance(self, car_pos, wpt_pos):
-        a = np.array((car_pos.x, car_pos.y, car_pos.z))
-        b = np.array((wpt_pos.x, wpt_pos.y, wpt_pos.z))
+    #TODO This is a static function
+    def euclid_distance(self, car_pos, wpt_pos):
+        a = np.array((car_pos.x, car_pos.y))
+        b = np.array((wpt_pos.x, wpt_pos.y))
+        return np.linalg.norm(a-b)
 
-        distance = np.linalg.norm(a-b)
-
-        return distance
-
-    # find index of nearest waypoint in self.current_waypoints
+    # find index of nearest waypoint in self.track_waypoints
     def find_nearest_waypoint(self):
-        waypoints = self.current_waypoints
+        waypoints = self.track_waypoints
         nearest_waypoint = [0, 100000] # index, ceiling for min distance
         car_pos = self.current_pose.pose.position
 
-        # loop through waypoints and find min distance
         for i in range(len(waypoints)):
-            distance = self.calculate_distance(car_pos, waypoints[i].pose.pose.position)
+            distance = self.euclid_distance(car_pos, waypoints[i].pose.pose.position)
             if(distance < nearest_waypoint[1]):
               nearest_waypoint = [i, distance]
-
+        #TODO This checks only the distance not if the waypoint is behind or in front.
+        #TODO It needs to be corrected using the orientation as well
         return nearest_waypoint[0]
 
-    # publish a list of next n waypoints to /final_waypoints
-    def publish_next_waypoints(self, start_index):
-        waypoints = Lane()
+    def publish_next_waypoints(self):
 
+        waypoints = Lane()
         waypoints.header.stamp = rospy.Time(0)
         waypoints.header.frame_id = self.current_pose.header.frame_id
+        waypoints.waypoints = copy.deepcopy(self.track_waypoints[self.current_waypoint_id: self.current_waypoint_id + LOOKAHEAD_WPS])
 
-        waypoints.waypoints = self.current_waypoints[start_index:start_index + LOOKAHEAD_WPS]
-
-        if(self.stop_light_waypoints):
-		    waypoints.waypoints = self.stop_light_waypoints
-
+        waypoints.waypoints = self.stopping(waypoints.waypoints)
         self.final_waypoints_pub.publish(waypoints)
 
     def pose_cb(self, msg):
@@ -108,54 +94,43 @@ class WaypointUpdater(object):
         self.current_velocity = msg
 
     def waypoints_cb(self, waypoints):
-        self.current_waypoints = waypoints.waypoints
-
-        # we only need the message once, unsubscribe as soon as we got the message
+        self.track_waypoints = waypoints.waypoints
         self.base_waypoints_sub.unregister()
 
     def traffic_cb(self, msg):
-        if(self.current_waypoints is None) or (self.current_waypoint_index is 0):
-            return
+        self.stop_waypoint_id = msg.data
 
-        # set waypoint index of stop light
-        stop_light = msg.data - 4
+    def stopping(self, waypoints):
 
-        # if stop light is detected and ahead of our current pos
-        if(stop_light is not -1) and (stop_light >= self.current_waypoint_index):
-            car_pos = self.current_pose.pose.position
-            wpt_pos = self.current_waypoints[self.current_waypoint_index].pose.pose.position
+        waypoints_to_tl = self.stop_waypoint_id - self.current_waypoint_id
+        print waypoints_to_tl, self.stop_waypoint_id, self.current_waypoint_id
+        #TODO Stopping decision depends at the moment only on LOOKAHEAD_WPS, we should make it distance/speed dependent
+        if(self.stop_waypoint_id >= 0) and ( 0 <= waypoints_to_tl < LOOKAHEAD_WPS):
+            print "Breaking"
+            distance_to_stop_point = self.wp_distance(self.current_waypoint_id,
+                                                   self.stop_waypoint_id - STOP_SHIFT)
+            for i in range(waypoints_to_tl - STOP_SHIFT, LOOKAHEAD_WPS):
+                waypoints[i].twist.twist.linear.x = 0.0
+            for i in range(waypoints_to_tl- STOP_SHIFT):
+                current_velocity = math.sqrt(self.current_velocity.twist.linear.x ** 2 +
+                                             self.current_velocity.twist.linear.y ** 2)
+                waypoint_velocity = current_velocity*math.sqrt(self.wp_distance(self.current_waypoint_id + i,
+                                                               self.stop_waypoint_id - STOP_SHIFT)/distance_to_stop_point)
+                if waypoint_velocity < 2.5:
+                    waypoint_velocity = 0.0
+                waypoints[i].twist.twist.linear.x = waypoint_velocity
+        elif self.stop_waypoint_id == -2:
+            #TODO CASE OF FAILED DETECTION
+            return waypoints
 
-            self.stop_light_waypoints = []
+        return waypoints
 
-            base_distance = self.calculate_distance(car_pos, wpt_pos)
-            total_distance = base_distance + self.distance(self.current_waypoints, self.current_waypoint_index, stop_light)
-            current_velocity = math.sqrt(self.current_velocity.twist.linear.x**2 +
-                                         self.current_velocity.twist.linear.y**2)
-
-            for i in range(self.current_waypoint_index, self.current_waypoint_index + LOOKAHEAD_WPS):
-                v = current_velocity*math.sqrt(self.distance(self.current_waypoints, i, stop_light) / total_distance)
-                waypoint = copy.deepcopy(self.current_waypoints[i])
-                waypoint.twist.twist.linear.x = v
-                self.stop_light_waypoints.append(waypoint)
-
-        else:
-            self.stop_light_waypoints = None
-
-    def obstacle_cb(self, msg):
-        # TODO: Callback for /obstacle_waypoint message. We will implement it later
-        pass
-
-    def get_waypoint_velocity(self, waypoint):
-        return waypoint.twist.twist.linear.x
-
-    def set_waypoint_velocity(self, waypoints, waypoint, velocity):
-        waypoints[waypoint].twist.twist.linear.x = velocity
-
-    def distance(self, waypoints, wp1, wp2):
+    def wp_distance(self, wp1, wp2):
         dist = 0
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
         for i in range(wp1, wp2+1):
-            dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
+            dist += dl(self.track_waypoints[wp1].pose.pose.position,
+                       self.track_waypoints[i].pose.pose.position)
             wp1 = i
         return dist
 
