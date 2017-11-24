@@ -37,8 +37,8 @@ class WaypointUpdater(object):
         self.stop_waypoint_id = -1
 
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
+        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb, queue_size=1)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb, queue_size=1)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb, queue_size=1)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
