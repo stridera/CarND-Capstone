@@ -24,7 +24,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 100
-STOP_SHIFT = 10
+STOP_SHIFT = 20
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -48,7 +48,7 @@ class WaypointUpdater(object):
     # publish next N waypoints to /final_waypoints interval rate
     def update(self):
         #If rate smaller the car stops too late
-        rate = rospy.Rate(30)
+        rate = rospy.Rate(50)
 
         while not rospy.is_shutdown():
           if self.track_waypoints and self.current_pose:
@@ -114,8 +114,10 @@ class WaypointUpdater(object):
             for i in range(waypoints_to_tl- STOP_SHIFT):
                 current_velocity = math.sqrt(self.current_velocity.twist.linear.x ** 2 +
                                              self.current_velocity.twist.linear.y ** 2)
-                waypoint_velocity = current_velocity*math.sqrt(self.wp_distance(self.current_waypoint_id + i,
-                                                               self.stop_waypoint_id - STOP_SHIFT)/distance_to_stop_point)
+                #waypoint_velocity = current_velocity*math.sqrt(self.wp_distance(self.current_waypoint_id + i,
+                #                                               self.stop_waypoint_id - STOP_SHIFT)/distance_to_stop_point)
+                waypoint_velocity = math.sqrt(current_velocity**2 -8.0*self.wp_distance(self.current_waypoint_id + i,
+                                                                                        self.current_waypoint_id - STOP_SHIFT))
                 if waypoint_velocity < 2.5:
                     waypoint_velocity = 0.0
                 waypoints[i].twist.twist.linear.x = waypoint_velocity
