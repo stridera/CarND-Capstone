@@ -24,8 +24,10 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 100
-STOP_SHIFT = 10
+LOOKAHEAD_WPS = 80
+STOP_SHIFT_m = 5
+#TODO Generalize for Carla
+DEC_MAX = -4
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -36,7 +38,7 @@ class WaypointUpdater(object):
         self.current_pose = None
         self.current_yaw = None
         self.current_velocity = None
-        self.stop_waypoint_id = -1
+        self.tl_waypoint_id = -1
 
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
@@ -83,18 +85,16 @@ class WaypointUpdater(object):
         waypoints = Lane()
         waypoints.header.stamp = rospy.Time(0)
         waypoints.header.frame_id = self.current_pose.header.frame_id
-        waypoints.waypoints = copy.deepcopy(self.track_waypoints[self.current_waypoint_id: self.current_waypoint_id + LOOKAHEAD_WPS])
-
+        waypoints.waypoints = copy.deepcopy(self.track_waypoints[self.current_waypoint_id: self.current_waypoint_id
+                                                                                           + LOOKAHEAD_WPS])
         waypoints.waypoints = self.stopping(waypoints.waypoints)
         self.final_waypoints_pub.publish(waypoints)
 
     def pose_cb(self, msg):
         self.current_pose = msg
-        position = msg.pose.position
         orientation = msg.pose.orientation
         quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
         self.current_yaw = ros_tf.transformations.euler_from_quaternion(quaternion)[2]
-
 
     def velocity_cb(self, msg):
         self.current_velocity = msg
@@ -104,37 +104,112 @@ class WaypointUpdater(object):
         self.base_waypoints_sub.unregister()
 
     def traffic_cb(self, msg):
-        self.stop_waypoint_id = msg.data
+        self.tl_waypoint_id = msg.data
 
     def stopping(self, waypoints):
 
-        waypoints_to_tl = self.stop_waypoint_id - self.current_waypoint_id
+        waypoints_to_tl = self.tl_waypoint_id - self.current_waypoint_id
+        if self.tl_waypoint_id >= 0:
+            distance_to_tl = self.wp_distance(self.current_waypoint_id, self.tl_waypoint_id)
+        else:
+            distance_to_tl = 1000000
+        current_speed = math.sqrt(self.current_velocity.twist.linear.x ** 2 +
+                                     self.current_velocity.twist.linear.y ** 2)
+        try:
+            acc_needed = current_speed**2/(2*distance_to_tl)
+        except ZeroDivisionError:
+            acc_needed = 10000.0
 
-        #TODO Stopping decision depends at the moment only on LOOKAHEAD_WPS, we should make it distance/speed dependent
-        if(self.stop_waypoint_id >= 0) and ( 0 <= waypoints_to_tl < LOOKAHEAD_WPS):
-            print "Breaking"
-            distance_to_stop_point = self.wp_distance(self.current_waypoint_id,
-                                                      self.stop_waypoint_id - STOP_SHIFT)
-            for i in range(waypoints_to_tl - STOP_SHIFT, LOOKAHEAD_WPS):
+
+        #TODO Compose to one if, but at the moment more clear like this
+        
+        # If the average acceleration needed is greater than max acceleration (used when we see red and we are already
+        # too close to attempt a stop
+        #if acc_needed > abs(DEC_MAX):
+        #    print "Too late for stopping....brakes not powerful enough..."
+        #    pass
+        
+        # A green light or no traffic light is observed
+        if self.tl_waypoint_id < 0:
+            print "No red light is observed..."
+            pass
+
+        # This should not happen apart from asyncr situation. The traffic light needs to be in front of the car
+        elif waypoints_to_tl < 0:
+            return  waypoints
+        
+        # If we are still too far from the traffic light there is not reason to start braking already
+        elif distance_to_tl > 50:
+            print "Still too early to start braking...chill yo.."
+            pass
+        
+        # Handle cases of traffic_waypoint = -2 (failed detection)
+        elif self.tl_waypoint_id == -2:
+            pass
+        
+        # All other cases that will impose a braking
+        else:
+            # Finding the stopping waypoint in terms of distance to the traffic light waypoint
+            stop_waypoint = self.tl_waypoint_id
+            for i in range(waypoints_to_tl):
+                d = self.wp_distance(self.tl_waypoint_id - i, self.tl_waypoint_id)
+                #TODO Working on a better condition
+                if abs(d - STOP_SHIFT_m) < 1.0:
+                    stop_waypoint -= i
+                    break
+
+            print "Breaking, stop waypoint index : ", stop_waypoint
+            print "Current speed: ", current_speed
+
+            dist_to_stop_wp = self.wp_distance(self.current_waypoint_id, stop_waypoint)
+            print "Distance to stop_waypoint: ", dist_to_stop_wp
+
+            wp_to_stop = stop_waypoint - self.current_waypoint_id
+            print "Waypoints until stops: ", wp_to_stop
+
+
+            for i in range(wp_to_stop, LOOKAHEAD_WPS):
                 waypoints[i].twist.twist.linear.x = 0.0
-            for i in range(waypoints_to_tl- STOP_SHIFT):
-                current_velocity = math.sqrt(self.current_velocity.twist.linear.x ** 2 +
-                                             self.current_velocity.twist.linear.y ** 2)
-                waypoint_velocity = current_velocity*math.sqrt(self.wp_distance(self.current_waypoint_id + i,
-                                                               self.stop_waypoint_id - STOP_SHIFT)/distance_to_stop_point)
-                #waypoint_velocity = math.sqrt(current_velocity**2 -8.0*self.wp_distance(self.current_waypoint_id + i,
-                #                                                                        self.current_waypoint_id))
+            for i in range(wp_to_stop):
 
-                #if waypoint_velocity < 2.5:
-                #    waypoint_velocity = 0.0
+                deceleration = -current_speed**2/(2*self.wp_distance(self.current_waypoint_id, stop_waypoint))
+
+                deceleration = -4.0
+                try:
+                    waypoint_velocity = math.sqrt(current_speed**2 +
+                                              2*deceleration*self.wp_distance(self.current_waypoint_id,
+                                                                          self.current_waypoint_id + i))
+                except:
+                    waypoint_velocity = 0.0
+                #waypoint_velocity = current_speed*math.sqrt(self.wp_distance(self.current_waypoint_id + i,
+                #                                                             stop_waypoint)/dist_to_stop_wp)
+                if current_speed < 0.01:
+                    waypoint_velocity = 0.0
+                if waypoint_velocity < 2.5:
+                    waypoint_velocity = 0.0
                 waypoints[i].twist.twist.linear.x = waypoint_velocity
-        elif self.stop_waypoint_id == -2:
-            #TODO CASE OF FAILED DETECTION
-            return waypoints
-
+        self.debug_waypoint_velocity(waypoints)
         return waypoints
 
+    def debug_waypoint_velocity(self, wps):
+        speeds = [str(wps[i].twist.twist.linear.x)[:4] for i in range(len(wps))]
+        print speeds
+        print
+
+
     def wp_distance(self, wp1, wp2):
+        #TODO Attention when the track closes
+        assert wp1 <= wp2
+        dist = 0
+        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2)
+        for i in range(wp2 - wp1):
+            dist += dl(self.track_waypoints[wp1 + i].pose.pose.position,
+                       self.track_waypoints[wp1 + i + 1].pose.pose.position)
+        return dist
+
+
+
+    def wp_distance2(self, wp1, wp2):
         dist = 0
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
         for i in range(wp1, wp2+1):
