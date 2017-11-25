@@ -87,13 +87,15 @@ class TLDetector(object):
         image_np = np.expand_dims(image, axis=0)
         result = self.TLDetector.get_classification(image_np)
 
-        if result == TrafficLight.RED:
+        if (result == TrafficLight.RED) or (result == TrafficLight.YELLOW):
             self._eval_stop_waypoint_index()
             self.tl_publisher.publish(Int32(self.stop_waypoint))
+        elif result == TrafficLight.GREEN:
+            self.tl_publisher.publish(Int32(-3))
         elif result == TrafficLight.UNKNOWN:
             self.tl_publisher.publish(Int32(-2))
         else:
-            self.tl_publisher.publish(Int32(-1))
+            self.tl_publisher.publish(Int32(-1)) # no traffic light
 
     def _eval_stop_waypoint_index(self):
         if self.closest_next_tl >= 0:
@@ -121,7 +123,7 @@ class TLDetector(object):
                 direction = math.atan2( tl[1] - self.position[1] , tl[0] - self.position[0] )
                 #https://stackoverflow.com/questions/1878907/the-smallest-difference-between-2-angles
                 angle_diff = math.atan2(math.sin(direction-self.yaw), math.cos(direction-self.yaw)) 
-                print "angles..." , self.yaw*180/math.pi, direction*180/math.pi, angle_diff
+                #print "angles..." , self.yaw*180/math.pi, direction*180/math.pi, angle_diff*180/math.pi
                 if (distance < MAX_DIST) and (distance > MIN_DIST) and (abs(angle_diff) < MAX_ANGLE) :
                     return i
         return -1

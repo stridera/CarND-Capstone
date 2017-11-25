@@ -16,8 +16,6 @@ class Controller(object):
         self.controller_log_file_base = os.path.join(rospy.get_param('~log_path'), 'controller_id_log_')
         self.controller_logging = rospy.get_param('~logging')
 
-        print (self.controller_log_file_base, self.controller_logging)
-
         vehicle_mass = kwargs['vehicle_mass']
         fuel_capacity = kwargs['fuel_capacity']
         self.brake_deadband = kwargs['brake_deadband']
@@ -78,7 +76,7 @@ class Controller(object):
         throttle = velocity
         steer = self.yaw_controller.get_steering(linear_setpoint, angular_setpoint, linear_current)
 
-        print("Throttle: {}  Brake: {}  Steering: {}".format(throttle, brake, steer))
+        #print("Throttle: {}  Brake: {}  Steering: {}".format(throttle, brake, steer))
 
         self.log['linear_setpoint'].append(linear_setpoint)
         self.log['linear_current'].append(linear_current)
