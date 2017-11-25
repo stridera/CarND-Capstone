@@ -28,8 +28,7 @@ LOOKAHEAD_WPS = 100
 STOP_SHIFT_m = 5
 MAX_BRAKE_DISTANCE_m = 100
 # TODO Generalize for Carla
-DEC_MAX = -4  # (m/s**2)
-
+DEC_MAX = -5  # (m/s**2)
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -46,6 +45,9 @@ class WaypointUpdater(object):
 
         self.tl_waypoint_id = -1
 
+        self.behavior_state = None
+
+
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
@@ -57,7 +59,7 @@ class WaypointUpdater(object):
 
     # publish next N waypoints to /final_waypoints interval rate
     def update(self):
-        # If rate smaller the car stops too late
+
         rate = rospy.Rate(50)
 
         while not rospy.is_shutdown():
@@ -86,8 +88,9 @@ class WaypointUpdater(object):
         waypoints.header.frame_id = self.current_pose.header.frame_id
         waypoints.waypoints = copy.deepcopy(self.track_waypoints[self.current_waypoint_id: self.current_waypoint_id
                                                                                            + LOOKAHEAD_WPS])
-        waypoints.waypoints = self.stopping(waypoints.waypoints)
-        self.debug_waypoint_velocity(waypoints.waypoints)
+        #waypoints.waypoints = self.stopping(waypoints.waypoints)
+        waypoints.waypoints = self.behavior(waypoints.waypoints)
+        #self.debug_waypoint_velocity(waypoints.waypoints)
         self.final_waypoints_pub.publish(waypoints)
 
     def pose_cb(self, msg):
@@ -105,6 +108,115 @@ class WaypointUpdater(object):
 
     def traffic_cb(self, msg):
         self.tl_waypoint_id = msg.data
+
+
+
+    def constant_speed(self, waypoints, speed):
+        #This is needed to reset the braking behavior
+        self.waypoint_saved_speed = None
+        for i in range(LOOKAHEAD_WPS):
+            waypoints[i].twist.twist.linear.x = speed
+        return waypoints
+
+    def brake(self, waypoints):
+        stop_waypoint = self.tl_waypoint_id
+        current_speed = math.sqrt(self.current_velocity.twist.linear.x ** 2 +
+                                  self.current_velocity.twist.linear.y ** 2)
+
+        print "Breaking, stop waypoint index : ", stop_waypoint
+        print "Current speed: ", current_speed
+
+        dist_to_stop_wp = self.wp_distance(self.current_waypoint_id, stop_waypoint)
+        print "Distance to stop_waypoint: ", dist_to_stop_wp
+
+        wp_to_stop = stop_waypoint - self.current_waypoint_id
+        wp_to_stop = min(wp_to_stop - 5, LOOKAHEAD_WPS)
+        print "Waypoints until stops: ", wp_to_stop
+
+        if self.waypoint_saved_speed is None:
+            self.waypoint_saved_speed = current_speed
+
+        for i in range(wp_to_stop, LOOKAHEAD_WPS):
+            waypoints[i].twist.twist.linear.x = 0.0
+        for i in range(wp_to_stop):
+            waypoint_velocity = self.waypoint_saved_speed * math.sqrt(
+                self.wp_distance(self.current_waypoint_id + i,
+                                 stop_waypoint) / dist_to_stop_wp)
+            waypoints[i].twist.twist.linear.x = waypoint_velocity
+
+        self.waypoint_saved_speed = waypoints[1].twist.twist.linear.x
+        return waypoints
+
+    def behavior(self, waypoints):
+
+        EXTREME_SPEED = 50.0
+        HIGH_SPEED = 13.1
+        LOW_SPEED = 9.1
+        DANGER_SPEED = 5.0
+        HARD_LIMIT_DIST = LOW_SPEED**2/(2*abs(DEC_MAX*0.8)) #Around 10
+        HARD_LIMIT_DIST = 8  # Around 10
+        LIMIT_DIST = 100
+        BRAKE_DIST = 60
+
+
+        #Traffic light detected but well far away
+        if self.tl_waypoint_id >= 0:
+            distance_to_tl = self.wp_distance(self.current_waypoint_id, self.tl_waypoint_id)
+            print "Distance to TL: ", distance_to_tl
+            if distance_to_tl > LIMIT_DIST:
+                self.behavior_state = "HIGH"
+
+        #No traffic light detected
+        if self.tl_waypoint_id == -1:
+            self.behavior_state = "HIGH"
+
+        # Traffic light detected with RED close but not enough to brake
+        if self.tl_waypoint_id >= 0:
+            distance_to_tl = self.wp_distance(self.current_waypoint_id, self.tl_waypoint_id)
+            print "Distance to TL: ", distance_to_tl
+            if BRAKE_DIST < distance_to_tl < LIMIT_DIST:
+                self.behavior_state = "LOW"
+
+        #Traffic light detected must brake
+        if self.tl_waypoint_id >= 0:
+            distance_to_tl = self.wp_distance(self.current_waypoint_id, self.tl_waypoint_id)
+            print "Distance to TL: ", distance_to_tl
+            if HARD_LIMIT_DIST < distance_to_tl < BRAKE_DIST:
+                self.behavior_state = "BRAKE"
+
+        # Traffic light detected, we are too close (full brake)
+        if self.tl_waypoint_id >= 0:
+            distance_to_tl = self.wp_distance(self.current_waypoint_id, self.tl_waypoint_id)
+            print "Distance to TL: ", distance_to_tl
+            if distance_to_tl < HARD_LIMIT_DIST:
+                self.behavior_state = "EXTREME"
+
+        if self.tl_waypoint_id == -3:
+            self.behavior_state = "LOW"
+
+        if self.tl_waypoint_id == -2:
+            self.behavior_state = "DANGER"
+
+
+        if self.behavior_state == "HIGH":
+            print "Traffic light far from horizon..."
+            return self.constant_speed(waypoints, HIGH_SPEED)
+        elif self.behavior_state == "LOW":
+            print "Approaching a traffic light green light detected..."
+            return self.constant_speed(waypoints, LOW_SPEED)
+        elif self.behavior_state == "EXTREME":
+            print "Red detected, very close full brake..."
+            return self.constant_speed(waypoints, 0.0)
+        elif self.behavior_state == "DANGER":
+            print "Traffic light detection not clear...slowing down to be sure..."
+            return self.constant_speed(waypoints, DANGER_SPEED)
+        else:
+            print "Red detected, beginning braking..."
+            return self.brake(waypoints)
+
+
+
+
 
     def stopping(self, waypoints):
 
@@ -132,18 +244,8 @@ class WaypointUpdater(object):
             elif distance_to_tl > 70:
                 print "Still too early to start braking...chill yo.."
                 return waypoints
-
-
             else:
-
-                # Finding the stopping waypoint in terms of distance to the traffic light waypoint
                 stop_waypoint = self.tl_waypoint_id
-                # for i in range(waypoints_to_tl):
-                #    d = self.wp_distance(self.tl_waypoint_id - i, self.tl_waypoint_id)
-                #    #TODO Working on a better condition
-                #    if abs(STOP_SHIFT_m - d) < 1.0:
-                #        stop_waypoint -= i
-                #        break
 
                 print "Breaking, stop waypoint index : ", stop_waypoint
                 print "Current speed: ", current_speed
@@ -164,10 +266,6 @@ class WaypointUpdater(object):
                     waypoint_velocity = self.waypoint_saved_speed * math.sqrt(
                         self.wp_distance(self.current_waypoint_id + i,
                                          stop_waypoint) / dist_to_stop_wp)
-                    # if current_speed < 0.01:
-                    #    waypoint_velocity = 0.0
-                    # if waypoint_velocity < 2.5:
-                    #    waypoint_velocity = 0.0
                     waypoints[i].twist.twist.linear.x = waypoint_velocity
 
                 self.waypoint_saved_speed = waypoints[1].twist.twist.linear.x
