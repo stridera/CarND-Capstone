@@ -5,6 +5,7 @@ import numpy as np
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from styx_msgs.msg import Lane, Waypoint
 from std_msgs.msg import Int32
+import tf as ros_tf
 import math
 import copy
 
@@ -33,6 +34,7 @@ class WaypointUpdater(object):
         self.current_waypoint_id = None
         self.track_waypoints = None
         self.current_pose = None
+        self.current_yaw = None
         self.current_velocity = None
         self.stop_waypoint_id = -1
 
@@ -65,16 +67,15 @@ class WaypointUpdater(object):
 
     # find index of nearest waypoint in self.track_waypoints
     def find_nearest_waypoint(self):
-        waypoints = self.track_waypoints
         nearest_waypoint = [0, 100000] # index, ceiling for min distance
         car_pos = self.current_pose.pose.position
 
-        for i in range(len(waypoints)):
-            distance = self.euclid_distance(car_pos, waypoints[i].pose.pose.position)
-            if(distance < nearest_waypoint[1]):
-              nearest_waypoint = [i, distance]
-        #TODO This checks only the distance not if the waypoint is behind or in front.
-        #TODO It needs to be corrected using the orientation as well
+        for i in range(len(self.track_waypoints)):
+            wp_pos = self.track_waypoints[i].pose.pose.position
+            distance = self.euclid_distance(car_pos, wp_pos)
+            angle = math.atan2(car_pos.y - wp_pos.y, car_pos.x - wp_pos.x)
+            if(distance < nearest_waypoint[1]) and (abs(angle - self.current_yaw) < math.pi / 4.0):
+                nearest_waypoint = [i, distance]
         return nearest_waypoint[0]
 
     def publish_next_waypoints(self):
@@ -89,6 +90,11 @@ class WaypointUpdater(object):
 
     def pose_cb(self, msg):
         self.current_pose = msg
+        position = msg.pose.position
+        orientation = msg.pose.orientation
+        quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
+        self.current_yaw = ros_tf.transformations.euler_from_quaternion(quaternion)[2]
+
 
     def velocity_cb(self, msg):
         self.current_velocity = msg
@@ -103,12 +109,12 @@ class WaypointUpdater(object):
     def stopping(self, waypoints):
 
         waypoints_to_tl = self.stop_waypoint_id - self.current_waypoint_id
-        print waypoints_to_tl, self.stop_waypoint_id, self.current_waypoint_id
+
         #TODO Stopping decision depends at the moment only on LOOKAHEAD_WPS, we should make it distance/speed dependent
         if(self.stop_waypoint_id >= 0) and ( 0 <= waypoints_to_tl < LOOKAHEAD_WPS):
             print "Breaking"
             distance_to_stop_point = self.wp_distance(self.current_waypoint_id,
-                                                   self.stop_waypoint_id - STOP_SHIFT)
+                                                      self.stop_waypoint_id - STOP_SHIFT)
             for i in range(waypoints_to_tl - STOP_SHIFT, LOOKAHEAD_WPS):
                 waypoints[i].twist.twist.linear.x = 0.0
             for i in range(waypoints_to_tl- STOP_SHIFT):
@@ -116,8 +122,11 @@ class WaypointUpdater(object):
                                              self.current_velocity.twist.linear.y ** 2)
                 waypoint_velocity = current_velocity*math.sqrt(self.wp_distance(self.current_waypoint_id + i,
                                                                self.stop_waypoint_id - STOP_SHIFT)/distance_to_stop_point)
-                if waypoint_velocity < 2.5:
-                    waypoint_velocity = 0.0
+                #waypoint_velocity = math.sqrt(current_velocity**2 -8.0*self.wp_distance(self.current_waypoint_id + i,
+                #                                                                        self.current_waypoint_id))
+
+                #if waypoint_velocity < 2.5:
+                #    waypoint_velocity = 0.0
                 waypoints[i].twist.twist.linear.x = waypoint_velocity
         elif self.stop_waypoint_id == -2:
             #TODO CASE OF FAILED DETECTION
