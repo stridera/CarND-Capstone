@@ -45,9 +45,9 @@ class TLDetector(object):
         config = yaml.load(config_string)
         self.stop_lines = np.array(config["stop_line_positions"])
 
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/image_color_throttled', Image, self.image_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb, queue_size=1)
+        rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1)
+        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb, queue_size=1)
         self.tl_publisher = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         rospy.spin()
@@ -115,12 +115,12 @@ class TLDetector(object):
         it returns the id of such traffic light. Otherwise it returns -1
         :return: The id of the next traffic light. None if non existing or too far.
         """
-
-        for i, tl in enumerate(self.stop_lines):
-            distance = TLDetector.eval_distance(tl[0], self.position[0], tl[1], self.position[1])
-            direction = math.atan2( tl[1] - self.position[1] , tl[0] - self.position[0] )
-            if (distance < MAX_DIST) and (distance > MIN_DIST) and (abs(direction - self.yaw) < MAX_ANGLE) :
-                return i
+        if (self.stop_lines is not None) and (self.position is not None):
+            for i, tl in enumerate(self.stop_lines):
+                distance = TLDetector.eval_distance(tl[0], self.position[0], tl[1], self.position[1])
+                direction = math.atan2( tl[1] - self.position[1] , tl[0] - self.position[0] )
+                if (distance < MAX_DIST) and (distance > MIN_DIST) and (abs(direction - self.yaw) < MAX_ANGLE) :
+                    return i
         return -1
 
     @staticmethod
