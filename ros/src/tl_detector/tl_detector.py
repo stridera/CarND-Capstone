@@ -119,7 +119,10 @@ class TLDetector(object):
             for i, tl in enumerate(self.stop_lines):
                 distance = TLDetector.eval_distance(tl[0], self.position[0], tl[1], self.position[1])
                 direction = math.atan2( tl[1] - self.position[1] , tl[0] - self.position[0] )
-                if (distance < MAX_DIST) and (distance > MIN_DIST) and (abs(direction - self.yaw) < MAX_ANGLE) :
+                #https://stackoverflow.com/questions/1878907/the-smallest-difference-between-2-angles
+                angle_diff = math.atan2(math.sin(direction-self.yaw), math.cos(direction-self.yaw)) 
+                print "angles..." , self.yaw*180/math.pi, direction*180/math.pi, angle_diff
+                if (distance < MAX_DIST) and (distance > MIN_DIST) and (abs(angle_diff) < MAX_ANGLE) :
                     return i
         return -1
 
