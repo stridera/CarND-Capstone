@@ -2,6 +2,7 @@
 
 import rospy
 import math
+import numpy as np
 from std_msgs.msg import Bool
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped, Pose, PoseStamped
@@ -33,6 +34,8 @@ that we have created in the `__init__` function.
 
 '''
 
+STEERING_BUFFER_SIZE = 10
+
 class DBWNode(object):
     def __init__(self):
         rospy.init_node('dbw_node')
@@ -60,6 +63,7 @@ class DBWNode(object):
         self.dbw_enabled = False
         self.final_waypoints = None
         self.current_setpoint = None
+        self.steering_buffer = np.zeros(STEERING_BUFFER_SIZE)
 
         params = {
             'vehicle_mass': vehicle_mass,
@@ -88,15 +92,6 @@ class DBWNode(object):
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
-            # TODO: Get predicted throttle, brake, and steering using `twist_controller`
-            # You should only publish the control commands if dbw is enabled
-            # throttle, brake, steering = self.controller.control(<proposed linear velocity>,
-            #                                                     <proposed angular velocity>,
-            #                                                     <current linear velocity>,
-            #                                                     <dbw status>,
-            #                                                     <any other argument you need>)
-            # if <dbw is enabled>:
-            #   self.publish(throttle, brake, steer)
             if(self.dbw_enabled) and \
               (self.current_pose is not None) and \
               (self.current_setpoint is not None) and \
@@ -113,42 +108,39 @@ class DBWNode(object):
             rate.sleep()
     def current_pose_cb(self, msg):
       self.current_pose = msg
-      pass
 
     def final_waypoints_cb(self, msg):
       self.final_waypoints = msg
-      pass
 
     def current_velocity_cb(self, msg):
       self.current_velocity = msg
-      pass
 
     def twist_cmd_cb(self, msg):
       self.current_setpoint = msg
-      pass
 
     def dbw_enabled_cb(self, msg):
       self.dbw_enabled = msg.data
-      pass
 
 
     def publish(self, throttle, brake, steer):
+        # smooth steering by using median of last N commands
+        self.steering_buffer = np.roll(self.steering_buffer, -1)
+        self.steering_buffer[STEERING_BUFFER_SIZE - 1] = steer
+        steering_smoothed = np.median(self.steering_buffer)
+
         tcmd = ThrottleCmd()
         tcmd.enable = True
         tcmd.pedal_cmd_type = ThrottleCmd.CMD_PERCENT
         tcmd.pedal_cmd = throttle
-        #self.throttle_pub.publish(tcmd)
 
         scmd = SteeringCmd()
         scmd.enable = True
-        scmd.steering_wheel_angle_cmd = steer
-        #self.steer_pub.publish(scmd)
+        scmd.steering_wheel_angle_cmd = steering_smoothed
 
         bcmd = BrakeCmd()
         bcmd.enable = True
         bcmd.pedal_cmd_type = BrakeCmd.CMD_TORQUE
         bcmd.pedal_cmd = brake
-        #self.brake_pub.publish(bcmd)
 
         action = 'brake' if brake > 0.0 else 'throttle'
 

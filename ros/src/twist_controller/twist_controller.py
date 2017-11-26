@@ -21,20 +21,18 @@ class Controller(object):
         self.brake_deadband = kwargs['brake_deadband']
         self.decel_limit = kwargs['decel_limit']
         self.accel_limit = kwargs['accel_limit']
-        
         wheel_radius = kwargs['wheel_radius']
         wheel_base = kwargs['wheel_base']
         steer_ratio = kwargs['steer_ratio']
         max_lat_accel = kwargs['max_lat_accel']
         max_steer_angle = kwargs['max_steer_angle']
-        min_speed = 10
+        min_speed = 1
 
         params = [wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle]
         self.yaw_controller = YawController(*params)
-        self.lowpass = LowPassFilter(0.2, 0.1)
-        self.pid = PID(kp=0.9, ki=0.0005, kd=0.06, mn=self.decel_limit, mx=self.accel_limit)
+        self.lowpass = LowPassFilter(3., 1.)
+        self.pid = PID(kp=1.4, ki=0.001, kd=0., mn=self.decel_limit, mx=self.accel_limit)
         self.last_time = rospy.get_time()
-        # https://www.researchgate.net/post/How_can_we_calculate_the_required_torque_to_move_a_massive_object_by_means_of_gear_assembly2
         self.brake_torque = (vehicle_mass + fuel_capacity * GAS_DENSITY) * wheel_radius
 
 
@@ -64,19 +62,36 @@ class Controller(object):
         delta = self.get_delta()
         unfiltered = self.pid.step(velocity_error, delta)
         velocity = self.lowpass.filt(unfiltered)
+
         # print("Linear Setpoint: {}  Linear Current: {}  Velocity Error: {}  Delta: {}  Unfiltered PID Output: {}  Lowpass Filtered: {}"
         #     .format(linear_setpoint, linear_current, velocity_error, delta, unfiltered, velocity))
 
-        brake = 0.
-        if velocity <= 0.:
-            velocity = abs(velocity)
-            brake = self.brake_torque * velocity if velocity > self.brake_deadband else 0.
-            velocity = 0
-
-        throttle = velocity
         steer = self.yaw_controller.get_steering(linear_setpoint, angular_setpoint, linear_current)
 
-        #print("Throttle: {}  Brake: {}  Steering: {}".format(throttle, brake, steer))
+        # set throttle and brake default to 0.
+        # they should never both be > 0. (gas and brake at same time)
+        throttle = 0.
+        brake = 0.
+
+        # if setpoint velocity less than threshold do max brake (fixes low throttle crawl at light)
+        if linear_setpoint < 0.11:
+            steer = 0. # yaw controller has trouble at low speed
+            brake = abs(self.decel_limit) * self.brake_torque
+        else:
+            # speeding up - set velocity to throttle 
+            if velocity > 0.:
+                throttle = velocity
+            # slowing down - check deadband limit before setting brake
+            else:
+                velocity = abs(velocity)
+
+                # brake if outside deadband
+                if velocity > self.brake_deadband:
+                    brake = velocity * self.brake_torque
+
+        
+
+        print("Throttle: {}  Brake: {}  Steering: {} Linear curr: {}".format(throttle, brake, steer, linear_current))
 
         self.log['linear_setpoint'].append(linear_setpoint)
         self.log['linear_current'].append(linear_current)

@@ -26,6 +26,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 LOOKAHEAD_WPS = 100
 STOP_SHIFT_m = 5
+STOP_SHIFT = 6
 MAX_BRAKE_DISTANCE_m = 100
 # TODO Generalize for Carla
 DEC_MAX = -4  # (m/s**2)
@@ -131,7 +132,7 @@ class WaypointUpdater(object):
                 print "Too late for stopping....brakes not powerful enough..."
                 return waypoints
 
-            elif distance_to_tl > 70:
+            elif distance_to_tl > 80:
                 print "Still too early to start braking...chill yo.."
                 return waypoints
 
@@ -147,14 +148,14 @@ class WaypointUpdater(object):
                 #        stop_waypoint -= i
                 #        break
 
-                print "Breaking, stop waypoint index : ", stop_waypoint
-                print "Current speed: ", current_speed
+                #print "Breaking, stop waypoint index : ", stop_waypoint
+                #print "Current speed: ", current_speed
 
                 dist_to_stop_wp = self.wp_distance(self.current_waypoint_id, stop_waypoint)
                 print "Distance to stop_waypoint: ", dist_to_stop_wp
 
                 wp_to_stop = stop_waypoint - self.current_waypoint_id
-                wp_to_stop = min(wp_to_stop - 5, LOOKAHEAD_WPS)
+                wp_to_stop = min(wp_to_stop - STOP_SHIFT, LOOKAHEAD_WPS)
                 print "Waypoints until stops: ", wp_to_stop
 
                 if self.waypoint_saved_speed is None:
