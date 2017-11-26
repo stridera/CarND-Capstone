@@ -76,8 +76,11 @@ class WaypointUpdater(object):
         for i in range(len(self.track_waypoints)):
             wp_coord = self.track_waypoints[i].pose.pose.position
             distance = self.euclid_distance(car_coord, wp_coord)
-            angle = math.atan2(car_coord.y - wp_coord.y, car_coord.x - wp_coord.x)
-            if (distance < nearest_waypoint[1]) and (abs(angle - self.current_yaw) < math.pi / 4.0):
+            direction = math.atan2(car_coord.y - wp_coord.y, car_coord.x - wp_coord.x)
+            # https://stackoverflow.com/questions/1878907/the-smallest-difference-between-2-angles
+            angle_diff = math.atan2(math.sin(direction - self.current_yaw), math.cos(direction - self.current_yaw))
+
+            if (distance < nearest_waypoint[1]) and (abs(angle_diff) < math.pi / 4.0):
                 nearest_waypoint = [i, distance]
         self.current_waypoint_id = nearest_waypoint[0]
 
