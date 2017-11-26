@@ -25,6 +25,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 100
+KPH_TO_MPS = 1.0/3.6
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -40,6 +41,12 @@ class WaypointUpdater(object):
         self.waypoint_saved_speed = None          # Holds the previous value of suggested speed
         self.tl_waypoint_id = None                # Holds the
         self.behavior_state = None
+
+        self.MAX_SPEED = KPH_TO_MPS*rospy.get_param("/waypoint_loader/velocity")   # The Max speed the car needs to use
+
+        self.LIMIT_DIST = rospy.get_param('~limit_dist')
+        self.BRAKE_DIST = rospy.get_param('~brake_dist')
+        self.HARD_LIMIT_DIST = rospy.get_param('~hard_limit_dist')
 
         self.base_waypoints_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb, queue_size=1)
@@ -115,8 +122,7 @@ class WaypointUpdater(object):
 
     def brake(self, waypoints):
         stop_waypoint = self.tl_waypoint_id
-        current_speed = math.sqrt(self.current_velocity.twist.linear.x ** 2 +
-                                  self.current_velocity.twist.linear.y ** 2)
+        current_speed = self.current_velocity.twist.linear.x
 
         print "Breaking, stop waypoint index : ", stop_waypoint
         print "Current speed: ", current_speed
@@ -125,6 +131,8 @@ class WaypointUpdater(object):
         print "Distance to stop_waypoint: ", dist_to_stop_wp
 
         wp_to_stop = stop_waypoint - self.current_waypoint_id
+
+        #TODO Understand better this parameter (5), can we evaluate it better?
         wp_to_stop = min(wp_to_stop - 5, LOOKAHEAD_WPS)
         print "Waypoints until stops: ", wp_to_stop
 
@@ -144,19 +152,15 @@ class WaypointUpdater(object):
 
     def eval_behavior(self):
 
-        HARD_LIMIT_DIST = 8
-        LIMIT_DIST = 100
-        BRAKE_DIST = 60
-
         # Traffic light with red light detected
         if self.tl_waypoint_id >= 0:
             distance_to_tl = self.wp_distance(self.current_waypoint_id, self.tl_waypoint_id)
             print "Distance to TL: ", distance_to_tl
-            if distance_to_tl > LIMIT_DIST:
+            if distance_to_tl > self.LIMIT_DIST:
                 self.behavior_state = "HIGH"
-            elif BRAKE_DIST < distance_to_tl < LIMIT_DIST:
+            elif self.BRAKE_DIST < distance_to_tl < self.LIMIT_DIST:
                 self.behavior_state = "LOW"
-            elif HARD_LIMIT_DIST < distance_to_tl < BRAKE_DIST:
+            elif self.HARD_LIMIT_DIST < distance_to_tl < self.BRAKE_DIST:
                 self.behavior_state = "BRAKE"
             else:
                 self.behavior_state = "EXTREME"
@@ -180,9 +184,9 @@ class WaypointUpdater(object):
             print "Initializing TL Detector...waiting for first message..."
             return self.constant_speed(waypoints, 0.0)
 
-        HIGH_SPEED = 13.1
-        LOW_SPEED = 9.1
-        DANGER_SPEED = 5.0
+        HIGH_SPEED = self.MAX_SPEED
+        LOW_SPEED = self.MAX_SPEED*0.75
+        DANGER_SPEED = self.MAX_SPEED*0.4
 
         self.eval_behavior()
 
@@ -203,7 +207,7 @@ class WaypointUpdater(object):
             return self.brake(waypoints)
 
     def wp_distance(self, wp1, wp2):
-        # TODO Attention when the track closes...here it gives problems use modulo...
+        # TODO Attention when the track closes...here it gives problems use modulo...(not needed in the simulator but may be needed in CARLA)
         dist = 0
         dl = lambda a, b: math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 
