@@ -78,7 +78,7 @@ class Controller(object):
         throttle = velocity
         steer = self.yaw_controller.get_steering(linear_setpoint, angular_setpoint, linear_current)
 
-        print("Throttle: {}  Brake: {}  Steering: {}".format(throttle, brake, steer))
+        #print("Throttle: {}  Brake: {}  Steering: {}".format(throttle, brake, steer))
 
         self.log['linear_setpoint'].append(linear_setpoint)
         self.log['linear_current'].append(linear_current)
