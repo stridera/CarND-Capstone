@@ -105,6 +105,11 @@ class DBWNode(object):
                 throttle, brake, steering = self.controller.control(**params)
 
                 self.publish(throttle, brake, steering)
+
+            else:
+                # Manual mode
+                self.controller.velocity_pid.reset()
+
             rate.sleep()
     def current_pose_cb(self, msg):
       self.current_pose = msg

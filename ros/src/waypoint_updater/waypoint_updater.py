@@ -120,6 +120,12 @@ class WaypointUpdater(object):
             waypoints[i].twist.twist.linear.x = speed
         return waypoints
 
+    def following(self, waypoints, multiplier = 1.0):
+        self.waypoint_saved_speed = None
+        for i in range(LOOKAHEAD_WPS):
+            waypoints[i].twist.twist.linear.x *= multiplier
+        return waypoints
+
     def brake(self, waypoints):
         stop_waypoint = self.tl_waypoint_id
         current_speed = self.current_velocity.twist.linear.x
@@ -192,16 +198,19 @@ class WaypointUpdater(object):
 
         if self.behavior_state == "HIGH":
             print "Traffic light far from horizon..."
-            return self.constant_speed(waypoints, HIGH_SPEED)
+            #return self.constant_speed(waypoints, HIGH_SPEED)
+            return self.following(waypoints)
         elif self.behavior_state == "LOW":
             print "Approaching a traffic light green light detected..."
-            return self.constant_speed(waypoints, LOW_SPEED)
+            #return self.constant_speed(waypoints, LOW_SPEED)
+            return self.following(waypoints, 0.75)
         elif self.behavior_state == "EXTREME":
             print "Red detected, very close full brake..."
             return self.constant_speed(waypoints, 0.0)
         elif self.behavior_state == "DANGER":
             print "Traffic light detection not clear...slowing down to be sure..."
-            return self.constant_speed(waypoints, DANGER_SPEED)
+            #return self.constant_speed(waypoints, DANGER_SPEED)
+            return self.following(waypoints, 0.4)
         else:
             print "Red detected, beginning braking..."
             return self.brake(waypoints)
