@@ -26,12 +26,14 @@ class Controller(object):
         steer_ratio = kwargs['steer_ratio']
         max_lat_accel = kwargs['max_lat_accel']
         max_steer_angle = kwargs['max_steer_angle']
-        min_speed = 1
+        min_speed = 0.001
 
         params = [wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle]
         self.yaw_controller = YawController(*params)
         self.lowpass = LowPassFilter(3., 1.)
-        self.pid = PID(kp=1.4, ki=0.001, kd=0., mn=self.decel_limit, mx=self.accel_limit)
+        self.velocity_pid = PID(kp=1.4, ki=0., kd=0., mn=self.decel_limit, mx=self.accel_limit)
+        self.steer_pid = PID(kp=0.7, ki=0.004, kd=0.3, mn=-max_steer_angle, mx=max_steer_angle)
+
         self.last_time = rospy.get_time()
         self.brake_torque = (vehicle_mass + fuel_capacity * GAS_DENSITY) * wheel_radius
 
@@ -60,13 +62,14 @@ class Controller(object):
         velocity_error = linear_setpoint - linear_current
 
         delta = self.get_delta()
-        unfiltered = self.pid.step(velocity_error, delta)
+        unfiltered = self.velocity_pid.step(velocity_error, delta)
         velocity = self.lowpass.filt(unfiltered)
 
         # print("Linear Setpoint: {}  Linear Current: {}  Velocity Error: {}  Delta: {}  Unfiltered PID Output: {}  Lowpass Filtered: {}"
         #     .format(linear_setpoint, linear_current, velocity_error, delta, unfiltered, velocity))
 
         steer = self.yaw_controller.get_steering(linear_setpoint, angular_setpoint, linear_current)
+        steer = self.steer_pid.step(steer, delta)
 
         # set throttle and brake default to 0.
         # they should never both be > 0. (gas and brake at same time)

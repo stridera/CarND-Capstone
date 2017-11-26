@@ -123,11 +123,6 @@ class DBWNode(object):
 
 
     def publish(self, throttle, brake, steer):
-        # smooth steering by using median of last N commands
-        self.steering_buffer = np.roll(self.steering_buffer, -1)
-        self.steering_buffer[STEERING_BUFFER_SIZE - 1] = steer
-        steering_smoothed = np.median(self.steering_buffer)
-
         tcmd = ThrottleCmd()
         tcmd.enable = True
         tcmd.pedal_cmd_type = ThrottleCmd.CMD_PERCENT
@@ -135,7 +130,7 @@ class DBWNode(object):
 
         scmd = SteeringCmd()
         scmd.enable = True
-        scmd.steering_wheel_angle_cmd = steering_smoothed
+        scmd.steering_wheel_angle_cmd = steer
 
         bcmd = BrakeCmd()
         bcmd.enable = True
