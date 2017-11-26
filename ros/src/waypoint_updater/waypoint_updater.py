@@ -59,13 +59,13 @@ class WaypointUpdater(object):
 
     # publish next N waypoints to /final_waypoints interval rate
     def update(self):
-
         rate = rospy.Rate(50)
         while not rospy.is_shutdown():
             if self.track_waypoints and self.current_pose and self.current_velocity:
                 self.find_nearest_waypoint()
                 self.publish_next_waypoints()
             rate.sleep()
+
     # find index of nearest waypoint in self.track_waypoints
     def find_nearest_waypoint(self):
         nearest_waypoint = [-1, 100000]  # index, ceiling for min distance
