@@ -11,13 +11,14 @@ import errno
 
 from tl_classifier import TLClassifier
 
-CLASSIFIER_MODEL_URL = 'https://s3.eu-central-1.amazonaws.com/system-shock/model.h5'
-DETECTOR_MODEL_URL   = 'https://s3.eu-central-1.amazonaws.com/system-shock/frozen_inference_graph.pb'
+CLASSIFIER_MODEL_URL    = 'https://s3.eu-central-1.amazonaws.com/system-shock/model.h5'
+CLASSIFIER_MODEL_MD5SUM = 'fefb7c4542acfb6cc28375ddff51313b'
+
+DETECTOR_MODEL_URL    = 'https://s3.eu-central-1.amazonaws.com/system-shock/frozen_inference_graph.pb'
+DETECTOR_MODEL_MD5SUM = 'c7927969f3a0e4a553c3485304241a1f'
 
 class DoubleStageClassifier(TLClassifier):
     def __init__(self, **kwargs):
-        #self.path_classifier = kwargs["path_classifier"]
-        #self.path_detector = kwargs["path_detector"]
 
         self.path_detector = "../../../data/traffic-light-models/" \
                                "rfcn_resnet101_coco_11_06_2017/frozen_inference_graph.pb"
@@ -96,10 +97,10 @@ class Detector(object):
                 raise
             pass
 
-        # TODO: Add hash if/when we upload a different model
         model_file = get_file(
             os.path.abspath(model_file),
-            DETECTOR_MODEL_URL)
+            DETECTOR_MODEL_URL,
+            file_hash = DETECTOR_MODEL_MD5SUM)
 
         self.model_file = model_file
         self.detection_graph = tf.Graph()
@@ -134,10 +135,10 @@ class Classifier(object):
                 raise
             pass
 
-        # TODO: Add hash if/when we upload a different model
         model_file = get_file(
             os.path.abspath(os.path.join(model_path, 'model.h5')),
-            CLASSIFIER_MODEL_URL)
+            CLASSIFIER_MODEL_URL,
+            file_hash = CLASSIFIER_MODEL_MD5SUM)
 
         self.classification_model = load_model(model_file)
 
